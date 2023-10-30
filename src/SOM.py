@@ -10,7 +10,6 @@ from NoiseSOM import *
 class SOM(object):
 
 	def __init__(self, *args, **kwargs):
-		#resolution, train_cat, validate_cat, analysis_output_path=None):
 		'''
 		Initialize a SOM object (wraps Gary's NoiseSOM)
 
@@ -174,7 +173,7 @@ def load_SOM(savepath):
 		sd = pickle.load(f)
 
 	som = SOM(sd['somres'], sd['train_cat_path'], sd['validate_cat_path'], 
-						sd['save_path'])
+						analysis_output_path=sd['save_path'])
 
 	ivar_to_skip = ['somres', 'train_cat_path', 'validate_cat_path', 'save_path']
 	for ivar in sd:

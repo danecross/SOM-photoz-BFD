@@ -8,6 +8,8 @@ from matplotlib import pyplot as pl
 
 from copy import deepcopy
 
+import tqdm
+
 class NoiseSOM:
     '''Class to build a SOM that deals with noisy data.'''
     def __init__(self, metric, data, errors, learning,
@@ -103,7 +105,7 @@ class NoiseSOM:
             minF = np.min(self.data,axis=0)
             maxF = np.max(self.data,axis=0)
 
-        nCells = np.product(self.shape)
+        nCells = np.prod(self.shape)
         if self.initialize=='uniform':
             # Populate weights with random numbers
             self.weights = np.random.rand(nCells,self.N)
@@ -174,10 +176,10 @@ class NoiseSOM:
         if final_i > self.nTrain:
             final_i = self.nTrain
 
-        for i in range(init_i, final_i):
+        for i in tqdm.tqdm(range(init_i, final_i)):
             self.i = i
-            if i%10000==0:
-                print('Training',i)
+            #if i%10000==0:
+            #    print('Training',i)
             # Calculate p , get BMU
             dd = self.data[self.order[i]]
             err = self.ee[self.order[i]]
@@ -327,7 +329,7 @@ class NoiseSOM:
         with open(fname, 'wb') as f:
             pickle.dump(obj, f)
 
-def load_SOM(fname):
+def load_NoiseSOM(fname):
     with open(fname, 'rb') as f:
         obj = pickle.load(f)
         f.close()
