@@ -28,11 +28,13 @@ class SOM(object):
 		if len(args)==3 and len(kwargs)==1:
 	
 			resolution, train_cat, validate_cat = args 
-			analysis_output_path = kwargs['analysis_output_path']
+			analysis_output_path = kwargs.get('analysis_output_path', '.')
 
-			self.save_path = analysis_output_path
+			self.save_path = os.path.abspath(analysis_output_path)
 			self.somres = resolution
-			self.train_cat_path, self.validate_cat_path = train_cat, validate_cat
+			self.train_cat_path = os.path.abspath(train_cat)
+			self.validate_cat_path = os.path.abspath(validate_cat)
+			
 			self._get_catalogs(train_cat, validate_cat)
 			self.SOM = self._initialize_SOM(self.train_fluxes, self.train_err)
 			self.trained = False
@@ -61,6 +63,9 @@ class SOM(object):
 		setattr(self, "bands", bands)
 
 	def _initialize_SOM(self, fluxes, fluxes_err):
+
+		if len(self.train_sample) == 0: return
+		
 		nTrain=fluxes.shape[0]
 		hh = hFunc(nTrain,sigma=(30,1))
 		metric = AsinhMetric(lnScaleSigma=0.4,lnScaleStep=0.03)
@@ -82,18 +87,25 @@ class SOM(object):
 		setattr(self, "trained", True)
 
 	def load(self):
-		som = load_NoiseSOM(os.path.join(self.save_path, 'SOM.pkl'))	
+		fname = os.path.join(self.save_path, 'SOM.pkl')
+		try:
+			som = load_NoiseSOM(fname)	
+		except KeyError:
+			full_som = load_SOM(fname)
+			som = full_som.SOM
 		setattr(self, 'SOM', som)
 
 
-	def validate(self, overwrite=False):
+	def validate(self, overwrite=False, num_inds=1000):
 		'''Classify the validation data to examine efficacy of training.'''
+
+		if len(self.validate_sample) == 0: return
 
 		if not overwrite and self.save_path is not None and \
 			 os.path.exists(os.path.join(self.save_path, "assignments.pkl")):
 			assignments = self._load_assignments()
 		else:
-			assignments = self._run_assignments()
+			assignments = self._run_assignments(num_inds)
 		
 
 		self.validate_sample['CA'] = assignments
@@ -115,6 +127,7 @@ class SOM(object):
                                       self.validate_err[inds[index]])
 			return cells
     
+		num_inds = min(len(self.validate_sample), num_inds)
 		inds = np.array_split(np.arange(len(self.validate_sample)),num_inds)
 		with mp.Pool(4) as p: 
 			results = list(tqdm.tqdm(p.imap(assign_som, range(num_inds)), total=num_inds))
@@ -159,9 +172,10 @@ class SOM(object):
 		if os.path.isdir(savepath): 
 			raise ValueError("SOM save path must include the name of the file to be saved")
 
-		to_save = {} ; ivar_to_skip = []
-		for ivar in self.__dict__.keys():
-			if ivar in ivar_to_skip: continue
+		to_save = {} 
+		ivars = ['save_path', 'somres', 'train_cat_path', 'validate_cat_path',
+					'bands', 'SOM']
+		for ivar in ivars:
 			to_save[ivar] = getattr(self, ivar)
 
 		with open(savepath, 'wb') as f:
@@ -175,7 +189,7 @@ def load_SOM(savepath):
 	som = SOM(sd['somres'], sd['train_cat_path'], sd['validate_cat_path'], 
 						analysis_output_path=sd['save_path'])
 
-	ivar_to_skip = ['somres', 'train_cat_path', 'validate_cat_path', 'save_path']
+	ivar_to_skip = []
 	for ivar in sd:
 		if ivar in ivar_to_skip: continue
 		setattr(som, ivar, sd[ivar])

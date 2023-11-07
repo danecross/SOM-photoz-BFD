@@ -1,4 +1,5 @@
 
+import pickle
 import os
 import shutil
 
@@ -87,12 +88,34 @@ class TestSOM:
 
 	def test__load_assignments(self, full_som):
 		full_som._load_assignments()
-
+	
 	def test_validate(self, full_som):
 		full_som.load()
 		full_som.validate()
 
+	## SAVE/LOAD TESTS ##
 
+	@pytest.fixture
+	def outpath(self, output_path):	
+		return os.path.join(output_path, "SOM.pkl")
+
+	def test_save_SOM(self, full_som, outpath):
+		
+		full_som.save(outpath)
+		assert(os.path.exists(outpath))
+		
+		with open(outpath, 'rb') as f:
+			saved = pickle.load(f)
+
+		assert(saved.get('somres', None) is not None)
+		assert(saved.get('train_cat_path', None) is not None)
+		assert(saved.get('validate_cat_path', None) is not None)
+		assert(saved.get('save_path', None) is not None)
+		assert(saved.get('bands', None) is not None)
+		
+	def test_load_SOM(self, outpath):
+
+		load_SOM(outpath)
 
 
 

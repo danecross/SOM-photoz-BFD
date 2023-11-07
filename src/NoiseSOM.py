@@ -115,8 +115,12 @@ class NoiseSOM:
                 self.weights = np.exp(self.weights)
         elif self.initialize=='sample':
             # Populate weights with a random sample from the data
-            indices = np.random.choice(self.data.shape[0],size=self.shape,
-                                       replace=False).flatten()
+            try:
+                indices = np.random.choice(self.data.shape[0],size=self.shape,
+                                           replace=False).flatten()
+            except ValueError:
+                indices = np.random.choice(self.data.shape[0],size=self.shape,
+                                           replace=True).flatten()
             if self.logF:
                 # Allow no negatives - lower bound at 1-sigma
                 self.weights = np.maximum(self.data[indices,:],self.errors[indices,:])
