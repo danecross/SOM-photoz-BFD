@@ -14,13 +14,17 @@ warnings.filterwarnings("ignore")
 base_output = '../outputs/basic/'
 if not os.path.exists(base_output): os.mkdir(base_output)
 
+wide_somres = 32
+deep_somres = 64
+
 ##################
 ## SOM TRAINING ##
 ##################
 if __name__=='__main__':
+
 	wide_SOM_path = base_output + 'wide/'
 	if not os.path.exists(wide_SOM_path): os.mkdir(wide_SOM_path)
-	wide_SOM = SOM(32, '../data/wide_field_data/TRAIN_CAT_1E+05.fits',
+	wide_SOM = SOM(wide_somres, '../data/wide_field_data/TRAIN_CAT_1E+05.fits',
 						 	 '../data/wide_field_data/VALIDATION_CAT_1E+06.fits', 
 						 	 analysis_output_path=wide_SOM_path)
 
@@ -36,7 +40,7 @@ if __name__=='__main__':
 
 	deep_SOM_path = base_output+'deep/'
 	if not os.path.exists(deep_SOM_path): os.mkdir(deep_SOM_path)
-	deep_SOM = SOM(64, '../data/deep_field_data/BFD/TRAIN_CAT_1E+05.fits',
+	deep_SOM = SOM(deep_somres, '../data/deep_field_data/BFD/TRAIN_CAT_1E+05.fits',
 						 	 '../data/deep_field_data/BFD/VALIDATE_CAT_1E+05.fits',
 						 	 analysis_output_path=deep_SOM_path)
 

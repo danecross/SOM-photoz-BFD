@@ -94,9 +94,7 @@ class TestEasy:
 
 	def test_tomographic_binning(self, tb):
 		bins = tb.make_bins(4)
-		bins.save(tb_output)
-
-
+		bins.save(tb_output+"Nz.pkl")
 
 
 

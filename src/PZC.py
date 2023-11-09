@@ -152,6 +152,7 @@ class PZC(object):
 				empty_count += 1
 
 		pcchat = np.nan_to_num(pcchat)
+
 		return pcchat
 
 	def _get_p_z_c(self, zmax):
@@ -159,7 +160,7 @@ class PZC(object):
 		ncells_deep, ncells_wide = self.deep_SOM.somres**2,self.wide_SOM.somres**2
 		
 		zmax = np.max(self.simulations['Z']) if zmax is None else zmax
-		zrange = (0,np.max(self.simulations['Z']))
+		zrange = (0,zmax)
 		step_size = 0.01 
 
 		redshifts = np.arange(zrange[0], zrange[1], step_size) ; num_zbins = len(redshifts)
