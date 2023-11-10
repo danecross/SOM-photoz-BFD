@@ -40,21 +40,23 @@ class TomographicBins(object):
 		
 		args:
 			- num_tomo_bins (int): number of tomographic bins
-			- *weights (bool): use cell weights
 			- *compost_bin (float): percent of the galaxies to compost
-			- *
+			- *ng_per_bin (np.array): array of pre-counted ng_per_bin 
+			- *weights (np.array): array of wide cell weights
 		'''
 
-		if kwargs.get('weights', False):
+		if kwargs.get('weights', None) is not None:
 			raise NotImplementedError
-
-		available_bins, occupation = self._get_bin_populations()
-		if 'compost_bin' in kwargs:
-			compost_bin_WCs, available_bins = self._assign_to_compost(available_bins,
-																						 kwargs['compost_bin'],
-																						 occupation)
+		
+		if kwargs.get('ng_per_bin', None) is None:
+			available_bins, occupation = self._get_bin_populations()
 		else:
-			compost_bin_WCs = []
+			occupation = ng_per_bin
+			available_bins = [wc for wc,occ in enumerate(occupation) if occ>0]
+
+		compost_bin_WCs, available_bins = self._assign_to_compost(available_bins,
+																					 kwargs.get('compost_bin',0.0),
+																					 occupation)
 
 		binned_WCs = self._assign_to_tomo_bins(available_bins, num_tomo_bins, occupation)
 
@@ -77,6 +79,8 @@ class TomographicBins(object):
 
 	def _assign_to_compost(self, available_bins, percent_to_compost, occupation):
 
+		if percent_to_compost == 0: return [], available_bins
+
 		# order bins on standard deviation of pzchat
 		stddev = [D(self.pzc.redshifts, self.pzc.pzchat[i]) for i in available_bins]
 		ordered_bins = [wc for _,wc in reversed(sorted(zip(stddev, available_bins)))]
@@ -84,7 +88,7 @@ class TomographicBins(object):
 		# remove bins one by one until percent removed is percent_to_compost
 		ng_in_compost = 0 ; total_ng = np.sum(occupation)
 		compost_wcs = []
-		while ng_in_compost/total_ng <= percent_to_compost:
+		while ng_in_compost/total_ng < percent_to_compost:
 			compost_wcs += [ordered_bins.pop(0)]
 			ng_in_compost += occupation[compost_wcs[-1]]
 
@@ -105,7 +109,7 @@ class TomographicBins(object):
 				ng_in_bin += occupation[wcs[-1]]
 
 			bin_wcs += [wcs]
-
+	
 		return bin_wcs
 
 
@@ -138,7 +142,7 @@ class Result(object):
 		self.pzc = pzc
 		self.pzc.load_realizations()
 
-	def calculate_Nz(self, apply_selection_effects=False, weighted=False, zmax=6):
+	def calculate_Nz(self, apply_selection_effects=True, weights=None, zmax=6):
 
 		if not apply_selection_effects:
 			Nz = {}
@@ -148,37 +152,56 @@ class Result(object):
 				Nz[i] = np.sum(self.pzchat[tbin], axis=0)/len(tbin)
 
 		else:
-			pzchats = self._apply_selection_effects(weighted=False, zmax=6)
-			Nz = []
-			for pzchat in pzchats:
-				Nz += [np.sum(pzchat, axis=0)/np.sum(pzchat)]
+			pzchats, trash_pzchats = self._apply_selection_effects(weights=None, zmax=6)
+			Nz = {}
+			for i,pzchat in enumerate(pzchats):
+				Nz[i] = np.sum(pzchat, axis=0)/np.sum(pzchat)
+			Nz[-1] = np.sum(trash_pzchats, axis=0)/np.sum(pzchat)
 
 		return Nz
 
-	def _apply_selection_effects(self, weighted=False, zmax=6):
+	def _apply_selection_effects(self, weights=None, zmax=6):
 		
-		grouped_by_bin = self._group_sims_by_tomobin()
+		compost, grouped_by_bin = self._group_sims_by_tomobin()
 		pzcbs = []
 		for tomobin_subsample in grouped_by_bin.groups:
 			pzcb = PZCB(self.pzc, tomobin_subsample)
-			pzcb.make_redshift_map(weighted=False, zmax=zmax)
+			pzcb.make_redshift_map(weights=weights, zmax=zmax)
 			
 			pzcbs += [pzcb.pzchat]
 
-		return pzcbs
+		pzcb_t = PZCB(self.pzc, compost)
+		pzcb_t.make_redshift_map(weights=weights, zmax=zmax)
+		trash_pzcb = pzcb_t.pzchat
 
-	def _group_sims_by_tomobin(self):
+		return pzcbs, trash_pzcb
+
+	def _group_sims_by_tomobin(self, table=None):
 		# assign tomo bins to each wide simulation
-		simulated_widegals = self.pzc.simulations
+		simulated_widegals = self.pzc.simulations if table is None else table
 		bin_assignment = (-1)*np.ones(len(simulated_widegals)) #default to compost
 		for i,row in enumerate(simulated_widegals):
 			for j,tbin in enumerate(self.binned_WCs):
-				if row['WC'] in tbin: bin_assignment[i] = j-1
+				if row['WC'] in tbin: bin_assignment[i] = j
 
 		simulated_widegals['tomo_bin'] = bin_assignment
+
+		compost_mask = (simulated_widegals['tomo_bin']==-1)
+		compost = simulated_widegals[compost_mask]
+		simulated_widegals = simulated_widegals[~compost_mask]
+
 		grouped_by_tbin = simulated_widegals.group_by('tomo_bin')
 
-		return grouped_by_tbin
+		return compost, grouped_by_tbin
+
+	def bin_sample(self, table):
+		if not 'WC' in table.colnames:
+			assignments = self.pzc.wide_SOM.classify(table)
+			table['WC'] = assignments
+		else:
+			assignments = table['WC']
+		return assignments, self._group_sims_by_tomobin(table)
+	
 
 	def save(self, output_path):
 		

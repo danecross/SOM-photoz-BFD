@@ -121,28 +121,30 @@ class PZC(object):
 
 		setattr(self, "simulations", Table.read(savepath))
 	
-	def make_redshift_map(self, weighted=False, zmax=6):
+	def make_redshift_map(self, weights=None, zmax=6):
 
-		setattr(self, "pcchat", self._get_p_c_chat(weighted))
-		setattr(self, "pzc", self._get_p_z_c(zmax))
-		setattr(self, "pzchat", self._get_p_z_chat())
+		try:
+			setattr(self, "pcchat", self._get_p_c_chat(weights))
+			setattr(self, "pzc", self._get_p_z_c(zmax))
+			setattr(self, "pzchat", self._get_p_z_chat())
+
+		except AttributeError as e:
+			print(e)
+			raise AttributeError("If the above error says that PZC does not have a 'simulations' attribute,"+\
+										"run 'load_realizations' on your PZC object to see if this fixes the problem")
 
 		peak_probs = np.array([E(self.redshifts, pzc) for pzc in self.pzchat])
 		redshift_map = peak_probs.reshape(self.wide_SOM.somres,self.wide_SOM.somres)
 
 		return redshift_map
 
-	def _get_p_c_chat(self, weighted=False):
+	def _get_p_c_chat(self, weights):
 
 		ncells_deep, ncells_wide = self.deep_SOM.somres**2,self.wide_SOM.somres**2
 		pcchat = np.zeros((ncells_deep,ncells_wide))
 		for dc,wc in zip(self.simulations['DC'], self.simulations['WC']):
 			pcchat[int(dc),:] += np.histogram(wc, bins=ncells_wide, range=(0,ncells_wide))[0]
-
-		if weighted:
-			# apply weights
-			pcchat = pcchat/self.WC_weights
-    
+ 
 		# normalize
 		empty_count = 0
 		for i,_ in enumerate(pcchat.T):
@@ -151,6 +153,10 @@ class PZC(object):
 			else:
 				empty_count += 1
 
+		if weights is not None:
+			# apply weights
+			pcchat = pcchat/weights
+   
 		pcchat = np.nan_to_num(pcchat)
 
 		return pcchat

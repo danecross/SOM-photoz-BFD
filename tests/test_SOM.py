@@ -9,7 +9,7 @@ import pytest
 import warnings
 warnings.filterwarnings("ignore")
 
-catpath = 'fixtures/FIXTURE_CAT_1E+04.fits'
+catpath = 'fixtures/som_tests/FIXTURE_CAT_1E+04.fits'
 
 class TestSOM:
 
@@ -97,7 +97,7 @@ class TestSOM:
 
 	@pytest.fixture
 	def outpath(self, output_path):	
-		return os.path.join(output_path, "SOM.pkl")
+		return os.path.join(output_path, "NoiseSOM.pkl")
 
 	def test_save_SOM(self, full_som, outpath):
 		

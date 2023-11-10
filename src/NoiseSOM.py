@@ -321,7 +321,7 @@ class NoiseSOM:
             del chisq
         return probs
    
-    def save(self, path='./', name="SOM.pkl"):
+    def save(self, path='./', name="NoiseSOM.pkl"):
         '''
 		Function for saving the SOM (possibly in the middle of training).
         ''' 

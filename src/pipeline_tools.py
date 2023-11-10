@@ -1,7 +1,31 @@
 
 from matplotlib import pyplot as plt
 import numpy as np
+import pickle
 from scipy.signal import savgol_filter
+
+from astropy.table import Table
+
+# calculates the weights for a whole catalog
+def calculate_weights(somres, classified_table, out_path):
+
+	if type(classified_table) == str:
+		t = Table.read(classified_table_path)
+	else:
+		t = classified_table
+	grouped_by_wc = t.group_by("WC")
+	
+	norm = np.sum(t['nz_R_weight'])
+	weights = np.zeros(somres**2)
+	for g in grouped_by_wc.groups:
+		wc = int(g[0]['WC'])
+		weight = np.average(g['nz_R_weight'])/norm
+		weights[wc] = weight
+
+	with open(out_path, 'wb') as f:
+		pickle.dump(weights, f)
+	
+	return weights
 
 # converts flux to magnitude
 def flux_to_mag(f, const=30):

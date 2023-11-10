@@ -49,14 +49,19 @@ class SOM(object):
 
 		for path, cattype in [(train_path, 'train'), (validate_path, 'validate')]:
 			t = Table.read(train_path, format='fits') ; self._get_available_bands(t) 
-			fluxes = np.array([t['Mf_%s'%s] for s in self.bands]).T
-			fluxes_cov = np.array([t['cov_Mf_%s'%s] for s in self.bands]).T
+			fluxes = self._get_fluxes(t) #np.array([t['Mf_%s'%s] for s in self.bands]).T
+			fluxes_cov = self._get_covs(t) #np.array([t['cov_Mf_%s'%s] for s in self.bands]).T
 			fluxes_err = np.sqrt(fluxes_cov)
 
 			setattr(self, '%s_sample'%cattype, t)
 			setattr(self, '%s_fluxes'%cattype, fluxes)
 			setattr(self, '%s_err'%cattype, fluxes_err)
 
+	def _get_fluxes(self, t):
+		return np.array([t['Mf_%s'%s] for s in self.bands]).T
+
+	def _get_covs(self, t):
+		return np.array([t['cov_Mf_%s'%s] for s in self.bands]).T
 
 	def _get_available_bands(self, t):
 		bands = [cn[len('Mf_'):] for cn in t.colnames if cn.startswith("Mf_")]
@@ -87,7 +92,7 @@ class SOM(object):
 		setattr(self, "trained", True)
 
 	def load(self):
-		fname = os.path.join(self.save_path, 'SOM.pkl')
+		fname = os.path.join(self.save_path, 'NoiseSOM.pkl')
 		try:
 			som = load_NoiseSOM(fname)	
 		except KeyError:
@@ -120,28 +125,39 @@ class SOM(object):
 			assignments = pickle.load(f)
 		return assignments
 
-	def _run_assignments(self, num_inds=1000):
+	def _run_assignments(self, table=None, num_inds=1000, save=True):
+
+		fluxes = self.validate_fluxes if table is None else self._get_fluxes(table)
+		errs = self.validate_err if table is None else np.sqrt(self._get_covs(table))
 
 		def assign_som(index):
-			cells, _ = self.SOM.classify(self.validate_fluxes[inds[index]], 
-                                      self.validate_err[inds[index]])
+			cells, _ = self.SOM.classify(fluxes[inds[index]], 
+                                      errs[inds[index]])
 			return cells
     
-		num_inds = min(len(self.validate_sample), num_inds)
-		inds = np.array_split(np.arange(len(self.validate_sample)),num_inds)
-		with mp.Pool(4) as p: 
+		num_inds = min(len(fluxes), num_inds)
+		inds = np.array_split(np.arange(len(fluxes)),num_inds)
+		with mp.Pool(30) as p: 
 			results = list(tqdm.tqdm(p.imap(assign_som, range(num_inds)), total=num_inds))
         
 		assignments = []
 		for res in results:
 			assignments = np.append(assignments,res)
-            
-		fpath = os.path.join(self.save_path, "assignments.pkl")
-		with open(fpath, 'wb') as f:
-			pickle.dump(assignments, f)
-			f.close()
+      
+		if save:
+			fpath = os.path.join(self.save_path, "assignments.pkl")
+			with open(fpath, 'wb') as f:
+				pickle.dump(assignments, f)
+				f.close()
 
 		return assignments
+
+	def classify(self, table):
+		
+		assignments = self._run_assignments(table=table, save=False)
+		return assignments
+		
+
 
 	def get(self, statistic, colname=None):
 		if len(self.validate_sample.groups) == 1: 
