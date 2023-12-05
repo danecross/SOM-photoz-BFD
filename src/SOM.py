@@ -9,7 +9,9 @@ from NoiseSOM import *
 
 class SOM(object):
 
-	def __init__(self, *args, **kwargs):
+	def __init__(self, resolution, train_cat, validate_cat, 
+						analysis_output_path='./',
+						col_fmt="Mf_", cov_fmt="cov_Mf_", err_fmt=None):
 		'''
 		Initialize a SOM object (wraps Gary's NoiseSOM)
 
@@ -18,54 +20,81 @@ class SOM(object):
 			- train_cat (str): path to the randomly selected catalog for training the SOM
 			- validate_cat (str): path to the randomly selected catalog for validating the SOM
 			- *analysis_output_path (str): directory to save analysis ouptuts
+			- *col_fmt (str): format for the flux columns the catalog
+			- *cov_fmt (str): format for the flux covariance columns in the catalog (if errors 
+					not covariances, set this value to None)
+			- *err_fmt (str): format for the flux error columns in the catalog (default None, 
+					if flux errors, set this value appropriately)
 
-		Note: the input catalogs must have the following column name conventions:
-			- each flux band has the name: "Mf_[g,r,i,z,etc]" (e.g. for the g band, "Mf_g")
-			- each flux covariance band has the name "cov_Mf_[g,r,etc]" (e.g. for the g band "cov_Mf_g")
+		Note on flux column names: the [col/cov/err]_fmt arguments should denote the beginning 
+			of the flux column names. e.g. if the col_fmt = "EX_FLUX_" then the column for the  
+			g-band should be "EX_FLUX_G" or EX_FLUX_g""
 
 		'''
 
-		if len(args)==3 and len(kwargs)==1:
-	
-			resolution, train_cat, validate_cat = args 
-			analysis_output_path = kwargs.get('analysis_output_path', '.')
-
-			self.save_path = os.path.abspath(analysis_output_path)
-			self.somres = resolution
-			self.train_cat_path = os.path.abspath(train_cat)
-			self.validate_cat_path = os.path.abspath(validate_cat)
+		self.save_path = os.path.abspath(analysis_output_path)
+		self.somres = resolution
+		self.train_cat_path = os.path.abspath(train_cat)
+		self.validate_cat_path = os.path.abspath(validate_cat)
 			
-			self._get_catalogs(train_cat, validate_cat)
-			self.SOM = self._initialize_SOM(self.train_fluxes, self.train_err)
-			self.trained = False
-		elif len(args)==0 and len(kwargs)==0:
-			pass
-		else:
-			raise TypeError("SOM.__init__() takes 3 arguments and "+\
-								 "1 kwarg (%i, %i given)"%(len(args), len(kwargs)))
+		self._get_catalogs(train_cat, validate_cat, col_fmt, cov_fmt, err_fmt)
+		self.SOM = self._initialize_SOM(self.train_fluxes, self.train_err)
+		self.trained = False
 
-
-	def _get_catalogs(self, train_path, validate_path):
+	def _get_catalogs(self, train_path, validate_path, col_fmt, cov_fmt, err_fmt):
 
 		for path, cattype in [(train_path, 'train'), (validate_path, 'validate')]:
-			t = Table.read(train_path, format='fits') ; self._get_available_bands(t) 
-			fluxes = self._get_fluxes(t) #np.array([t['Mf_%s'%s] for s in self.bands]).T
-			fluxes_cov = self._get_covs(t) #np.array([t['cov_Mf_%s'%s] for s in self.bands]).T
-			fluxes_err = np.sqrt(fluxes_cov)
+			t = Table.read(train_path, format='fits')
+			self._get_available_bands(t, col_fmt, cov_fmt, err_fmt) 
+
+			fluxes = self._get_fluxes(t) 
+			if self.use_covariances:
+				fluxes_cov = self._get_covs(t) 
+				fluxes_err = np.sqrt(fluxes_cov)
+			else:
+				fluxes_err = self._get_errs(t)
 
 			setattr(self, '%s_sample'%cattype, t)
 			setattr(self, '%s_fluxes'%cattype, fluxes)
 			setattr(self, '%s_err'%cattype, fluxes_err)
 
 	def _get_fluxes(self, t):
-		return np.array([t['Mf_%s'%s] for s in self.bands]).T
+		return np.array([t[fcn].data for fcn in self.flux_cols]).squeeze().T
 
 	def _get_covs(self, t):
-		return np.array([t['cov_Mf_%s'%s] for s in self.bands]).T
+		return np.array([t[ccn].data for ccn in self.cov_cols]).squeeze().T
 
-	def _get_available_bands(self, t):
-		bands = [cn[len('Mf_'):] for cn in t.colnames if cn.startswith("Mf_")]
+	def _get_errs(self, t):
+		return np.array([t[ecn].data for ecn in self.err_cols]).squeeze().T
+
+	def _get_available_bands(self, t, col_fmt, cov_fmt, err_fmt):
+		flxcols, coverrcols = self._get_column_names(t, col_fmt, cov_fmt, err_fmt)
+		bands = [cn[len(col_fmt):] for cn in flxcols]
+
 		setattr(self, "bands", bands)
+		setattr(self, "flux_cols", flxcols)
+		if self.use_covariances: setattr(self, "cov_cols", coverrcols)
+		else: setattr(self, "err_cols", coverrcols)
+
+	def _get_column_names(self, t, col_fmt, cov_fmt, err_fmt):
+		flux_cols = [cn for cn in t.colnames if cn.startswith(col_fmt)]
+		if err_fmt is not None:
+			coverr_cols = [cn for cn in t.colnames if cn.startswith(err_fmt)]
+			setattr(self, "use_covariances", False)
+		elif cov_fmt is not None:
+			coverr_cols = [cn for cn in t.colnames if cn.startswith(cov_fmt)]
+			setattr(self, "use_covariances", True)
+		else:
+			raise ValueError("Must set either cov_fmt or err_fmt to non-None value")
+
+		if len(flux_cols) == 0:
+			raise ValueError("Table does not have columns starting with " + col_fmt)
+		elif len(coverr_cols) == 0 and err_fmt is not None:
+			raise ValueError("Table does not have columns starting with " + err_fmt)
+		elif len(coverr_cols) == 0 and cov_fmt is not None:
+			raise ValueError("Table does not have columns starting with " + cov_fmt)
+
+		return flux_cols, coverr_cols
 
 	def _initialize_SOM(self, fluxes, fluxes_err):
 
@@ -110,7 +139,7 @@ class SOM(object):
 			 os.path.exists(os.path.join(self.save_path, "assignments.pkl")):
 			assignments = self._load_assignments()
 		else:
-			assignments = self._run_assignments(num_inds)
+			assignments = self._run_assignments(num_inds=num_inds)
 		
 
 		self.validate_sample['CA'] = assignments
