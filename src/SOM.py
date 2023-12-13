@@ -41,6 +41,10 @@ class SOM(object):
 		self.SOM = self._initialize_SOM(self.train_fluxes, self.train_err)
 		self.trained = False
 
+		self.col_fmt = col_fmt
+		self.cov_fmt = cov_fmt
+		self.err_fmt = err_fmt
+
 	def _get_catalogs(self, train_path, validate_path, col_fmt, cov_fmt, err_fmt):
 
 		for path, cattype in [(train_path, 'train'), (validate_path, 'validate')]:
@@ -189,9 +193,6 @@ class SOM(object):
 
 
 	def get(self, statistic, colname=None):
-		if len(self.validate_sample.groups) == 1: 
-			grouped_by_cell = self.validate_sample.group_by('CA')
-			setattr(self, 'grouped_by_cell', grouped_by_cell)
 
 		if statistic == 'occupation': # return somres x somres array of number of galaxies per cell
 			occupation=np.histogram(self.validate_sample['CA'], 
@@ -219,7 +220,7 @@ class SOM(object):
 
 		to_save = {} 
 		ivars = ['save_path', 'somres', 'train_cat_path', 'validate_cat_path',
-					'bands', 'SOM']
+					'bands', 'SOM', 'col_fmt', 'cov_fmt', 'err_fmt']
 		for ivar in ivars:
 			to_save[ivar] = getattr(self, ivar)
 
@@ -232,7 +233,8 @@ def load_SOM(savepath):
 		sd = pickle.load(f)
 
 	som = SOM(sd['somres'], sd['train_cat_path'], sd['validate_cat_path'], 
-						analysis_output_path=sd['save_path'])
+						analysis_output_path=sd['save_path'], 
+						col_fmt=sd['col_fmt'], cov_fmt=sd['cov_fmt'], err_fmt=sd['err_fmt'])
 
 	ivar_to_skip = []
 	for ivar in sd:
