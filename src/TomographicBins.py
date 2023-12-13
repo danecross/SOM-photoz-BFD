@@ -40,7 +40,7 @@ class TomographicBins(object):
 		
 		args:
 			- num_tomo_bins (int): number of tomographic bins
-			- *compost_bin (float): percent of the galaxies to compost
+			- *compost_sigma (float): redshift sigma maximum for compost
 			- *ng_per_bin (np.array): array of pre-counted ng_per_bin 
 			- *weights (np.array): array of wide cell weights
 		'''
@@ -51,12 +51,13 @@ class TomographicBins(object):
 		if kwargs.get('ng_per_bin', None) is None:
 			available_bins, occupation = self._get_bin_populations()
 		else:
-			occupation = ng_per_bin
+			occupation = kwargs.get('ng_per_bin')
 			available_bins = [wc for wc,occ in enumerate(occupation) if occ>0]
 
-		compost_bin_WCs, available_bins = self._assign_to_compost(available_bins,
-																					 kwargs.get('compost_bin',0.0),
-																					 occupation)
+		compost_bin_WCs, available_bins, pct_in_compost = \
+			self._assign_to_compost(available_bins,
+											kwargs.get('compost_sigma',None),
+											occupation)
 
 		binned_WCs = self._assign_to_tomo_bins(available_bins, num_tomo_bins, occupation)
 
@@ -77,39 +78,41 @@ class TomographicBins(object):
 		som.validate(overwrite_assignments)
 		return available_bins, som.get('occupation').flatten()
 
-	def _assign_to_compost(self, available_bins, percent_to_compost, occupation):
+	def _assign_to_compost(self, available_bins, compost_sigma, occupation):
 
-		if percent_to_compost == 0: return [], available_bins
+		if compost_sigma is None: return [], available_bins, 0
 
 		# order bins on standard deviation of pzchat
 		stddev = [D(self.pzc.redshifts, self.pzc.pzchat[i]) for i in available_bins]
 		ordered_bins = [wc for _,wc in reversed(sorted(zip(stddev, available_bins)))]
+		stddev = [std for std,_ in reversed(sorted(zip(stddev, available_bins)))]
 
-		# remove bins one by one until percent removed is percent_to_compost
-		ng_in_compost = 0 ; total_ng = np.sum(occupation)
-		compost_wcs = []
-		while ng_in_compost/total_ng < percent_to_compost:
+		# remove bins one by one until the sigma cross specified threshold
+		compost_wcs = [] ; ng_in_compost = 0
+		while stddev.pop(0) > compost_sigma:
 			compost_wcs += [ordered_bins.pop(0)]
 			ng_in_compost += occupation[compost_wcs[-1]]
 
-		return compost_wcs, ordered_bins
+		return compost_wcs, ordered_bins, ng_in_compost/np.sum(occupation)
 
 
 	def _assign_to_tomo_bins(self, available_bins, num_tomo_bins, occupation):
 
 		medians = [E(self.pzc.redshifts, self.pzc.pzchat[i]) for i in available_bins]
 		ordered_bins = [wc for m,wc in sorted(zip(medians, available_bins)) if m>0]
+		if len(ordered_bins) == 0: 
+			raise ValueError("no bins to assign (compost bin may be too big)")
 
-		total_ng = np.sum(occupation[available_bins])
+		total_ng = np.sum(occupation[ordered_bins]) 
 		bin_wcs = []
 		for i in range(num_tomo_bins):
 			wcs = [] ; ng_in_bin = 0
 			while ng_in_bin/total_ng < 1/num_tomo_bins and len(ordered_bins)>0:
 				wcs += [ordered_bins.pop(0)]
 				ng_in_bin += occupation[wcs[-1]]
-
+			
 			bin_wcs += [wcs]
-	
+
 		return bin_wcs
 
 
@@ -142,9 +145,9 @@ class Result(object):
 		self.pzc = pzc
 		self.pzc.load_realizations()
 
-	def calculate_Nz(self, apply_selection_effects=True, weights=None, zmax=6):
+	def calculate_Nz(self, apply_bin_cond=True, weights=None, zmax=6, fill_zeros=False):
 
-		if not apply_selection_effects:
+		if not apply_bin_cond:
 			Nz = {}
 			if len(self.compost_WCs) > 0:
 				Nz[-1] = np.sum(self.pzchat[self.compost_WCs], axis=0)/len(self.compost_WCs)
@@ -152,7 +155,7 @@ class Result(object):
 				Nz[i] = np.sum(self.pzchat[tbin], axis=0)/len(tbin)
 
 		else:
-			pzchats, trash_pzchats = self._apply_selection_effects(weights=None, zmax=6)
+			pzchats, trash_pzchats = self._apply_bin_cond(weights=None, zmax=6, fill_zeros=fill_zeros)
 			Nz = {}
 			for i,pzchat in enumerate(pzchats):
 				Nz[i] = np.sum(pzchat, axis=0)/np.sum(pzchat)
@@ -160,15 +163,16 @@ class Result(object):
 
 		return Nz
 
-	def _apply_selection_effects(self, weights=None, zmax=6):
+	def _apply_bin_cond(self, weights=None, zmax=6, fill_zeros=False):
 		
 		compost, grouped_by_bin = self._group_sims_by_tomobin()
 		pzcbs = []
 		for tomobin_subsample in grouped_by_bin.groups:
 			pzcb = PZCB(self.pzc, tomobin_subsample)
-			pzcb.make_redshift_map(weights=weights, zmax=zmax)
+			pzcb.make_redshift_map(weights=weights, zmax=zmax, fill_zeros=fill_zeros)
+			pzchat = pzcb.pzchat
 			
-			pzcbs += [pzcb.pzchat]
+			pzcbs += [pzchat]
 
 		pzcb_t = PZCB(self.pzc, compost)
 		pzcb_t.make_redshift_map(weights=weights, zmax=zmax)
