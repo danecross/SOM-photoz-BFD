@@ -62,6 +62,9 @@ class SOM(object):
 			setattr(self, '%s_fluxes'%cattype, fluxes)
 			setattr(self, '%s_err'%cattype, fluxes_err)
 
+	def _get_columns(self, t, colnames):
+		return np.array([t[fcn].data for fcn in colnames]).squeeze().T
+
 	def _get_fluxes(self, t):
 		return np.array([t[fcn].data for fcn in self.flux_cols]).squeeze().T
 
@@ -81,12 +84,15 @@ class SOM(object):
 		else: setattr(self, "err_cols", coverrcols)
 
 	def _get_column_names(self, t, col_fmt, cov_fmt, err_fmt):
-		flux_cols = [cn for cn in t.colnames if cn.startswith(col_fmt)]
+		flux_cols = [cn for cn in t.colnames if cn.startswith(col_fmt)
+														 and len(col_fmt)==len(cn)-1]
 		if err_fmt is not None:
-			coverr_cols = [cn for cn in t.colnames if cn.startswith(err_fmt)]
+			coverr_cols = [cn for cn in t.colnames if cn.startswith(err_fmt) 
+																and len(err_fmt)==len(cn)-1]
 			setattr(self, "use_covariances", False)
 		elif cov_fmt is not None:
-			coverr_cols = [cn for cn in t.colnames if cn.startswith(cov_fmt)]
+			coverr_cols = [cn for cn in t.colnames if cn.startswith(cov_fmt)
+																and len(cov_fmt)==len(cn)-1]
 			setattr(self, "use_covariances", True)
 		else:
 			raise ValueError("Must set either cov_fmt or err_fmt to non-None value")
@@ -158,10 +164,32 @@ class SOM(object):
 			assignments = pickle.load(f)
 		return assignments
 
-	def _run_assignments(self, table=None, num_inds=1000, save=True):
+	def _run_assignments(self, table=None, num_inds=1000, save=True, num_threads=50,
+					 			col_fmt=None, err_fmt=None, cov_fmt=None):
 
-		fluxes = self.validate_fluxes if table is None else self._get_fluxes(table)
-		errs = self.validate_err if table is None else np.sqrt(self._get_covs(table))
+		'''
+		Assign fluxes to cells in trained SOM. 
+		
+		Args: 
+			- *table (astropy.Table): table to classify. If None will classify the validate sample.
+			- *num_inds (int): number of subtables to split the main table into
+			- *save (str, bool): flag for saving the assignments. If True, will save to the 
+										default save path in a file called "assignments.pkl". If 
+										argument is a path, will save to that path.
+			- num_threads (int): number of multiprocess threads to run the classifications on
+			- col_fmt (str): format of the flux columns. If None, defaults to SOM format.
+			- err_fmt (str): format of the error columns. If None, defaults to SOM format.
+			- cov_fmt (str): format of the covariance columns. If None, defaults to SOM format.
+		'''
+
+		if table is not None: # classify the table specified, not the validation set
+			flx_cn, fer_cn = self._get_column_names(table, col_fmt, cov_fmt, err_fmt)
+			fluxes = self._get_columns(table, flx_cn)
+			if err_fmt is not None: errs = self._get_columns(table, fer_cn)
+			else: errs = np.sqrt(self._get_columns(table, fer_cn))
+		else:
+			fluxes = self.validate_fluxes 
+			errs = self.validate_err 
 
 		def assign_som(index):
 			cells, _ = self.SOM.classify(fluxes[inds[index]], 
@@ -170,24 +198,31 @@ class SOM(object):
     
 		num_inds = min(len(fluxes), num_inds)
 		inds = np.array_split(np.arange(len(fluxes)),num_inds)
-		with mp.Pool(30) as p: 
+		with mp.Pool(num_threads) as p: 
 			results = list(tqdm.tqdm(p.imap(assign_som, range(num_inds)), total=num_inds))
         
 		assignments = []
-		for res in results:
-			assignments = np.append(assignments,res)
+		for res in results: assignments = np.append(assignments,res)
       
 		if save:
-			fpath = os.path.join(self.save_path, "assignments.pkl")
+			fpath = os.path.join(self.save_path, "assignments.pkl") if type(save) != str else save
 			with open(fpath, 'wb') as f:
 				pickle.dump(assignments, f)
-				f.close()
 
 		return assignments
 
-	def classify(self, table):
+	def classify(self, table, num_threads=150, num_inds=10000, savepth=None,
+					 flux_fmt=None, err_fmt=None, cov_fmt=None):
 		
-		assignments = self._run_assignments(table=table, save=False)
+		flux_colname = self.col_fmt if flux_fmt is None else flux_fmt
+		flux_err_colname = self.err_fmt if err_fmt is None else err_fmt
+		flux_cov_colname = self.cov_fmt if cov_fmt is None else cov_fmt
+
+		assignments = self._run_assignments(table=table, save=savepth, 
+														num_threads=num_threads, num_inds=num_inds,
+														col_fmt=flux_colname, 
+														err_fmt=flux_err_colname, 
+														cov_fmt=flux_cov_colname)
 		return assignments
 		
 
