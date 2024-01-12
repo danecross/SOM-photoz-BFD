@@ -16,35 +16,23 @@ from SOM import load_SOM
 
 class PZC(object):
 
-	def __init__(self, wide_SOM, deep_SOM, outpath):
+	def __init__(self, xfer_fn, outpath):
 		
 		'''
 		Initializer for PZC class. 
 
 		args:
-			- wide_SOM (SOM): trained wide SOM object
-			- deep_SOM (SOM): trained deep SOM object
+			- xfer_fn (obj): the trasnfer function being used to make the redshift map
 			- outpath (str): the directory to which we save all results
 
 		'''
-		self.wide_SOM = wide_SOM
-		self.deep_SOM = deep_SOM
-		self.save_path = os.path.abspath(outpath)
 
-	def load_realizations(self, alternate_save_path=None):
-		'''
-		Loads the wide-field realizations. 
+		self.xfer_fn = xfer_fn
+		
+		self.wide_SOM = self.xfer_fn.wide_SOM
+		self.deep_SOM = self.xfer_fn.deep_SOM
+		self.save_path = outpath
 
-		Note: To make subclass implementation for this class, the only requirement is that
-				there is an instance variable established called "simulations" which points to an
-				astropy Table of deep field galaxies simulated onto the wide field. This table must have 
-				columns "DC" and "WC" for the deep cell and wide cell assignments respectively
-
-		Args:
-			- *alternate_save_path (str): if not None, will load the simulations table specified. If 	
-					left to default value, will load the `simulations.fits` file in the save path.
-		'''
-		raise NotImplementedError("This must be implemented in the child class")
 
 	def make_redshift_map(self, weights=None, zmax=4, fill_zeros=False):
 		'''
@@ -54,15 +42,10 @@ class PZC(object):
 			- *weights (): Not Implemented Yet. 
 			- *zmax (float): the maximum redshift cutoff to use
 		'''
-		try:
-			setattr(self, "pcchat", self._get_p_c_chat(weights))
-			setattr(self, "pzc", self._get_p_z_c(zmax, fill_zeros=fill_zeros))
-			setattr(self, "pzchat", self._get_p_z_chat())
-
-		except AttributeError as e:
-			print(e)
-			raise AttributeError("If the above error says that PZC does not have a 'simulations' attribute,"+\
-										"run 'load_realizations' on your PZC object to see if this fixes the problem")
+		
+		setattr(self, "pcchat", self._get_p_c_chat(weights))
+		setattr(self, "pzc", self._get_p_z_c(zmax, fill_zeros=fill_zeros))
+		setattr(self, "pzchat", self._get_p_z_chat())
 
 		peak_probs = np.array([E(self.redshifts, pzc) for pzc in self.pzchat])
 		redshift_map = peak_probs.reshape(self.wide_SOM.somres,self.wide_SOM.somres)
@@ -74,7 +57,7 @@ class PZC(object):
 		ncells_deep, ncells_wide = self.deep_SOM.somres**2,self.wide_SOM.somres**2
 		pcchat = np.zeros((ncells_deep,ncells_wide))
 
-		for dc,wc in zip(self.simulations['DC'], self.simulations['WC']):
+		for dc,wc in zip(self.xfer_fn.simulations['DC'], self.xfer_fn.simulations['WC']):
 			pcchat[int(dc),:] += np.histogram(wc, bins=ncells_wide, range=(-0.5,ncells_wide))[0]
 
 		# normalize
@@ -97,14 +80,14 @@ class PZC(object):
 		
 		ncells_deep, ncells_wide = self.deep_SOM.somres**2,self.wide_SOM.somres**2
 		
-		zmax = np.max(self.simulations['Z']) if zmax is None else zmax
+		zmax = np.max(self.xfer_fn.simulations['Z']) if zmax is None else zmax
 		zrange = (0,zmax) ; step_size = 0.01 
 
 		redshifts = np.arange(zrange[0], zrange[1]+step_size, step_size) 
 		setattr(self, 'redshifts', redshifts)
 
 		cz = [np.array([])]*ncells_deep 
-		for row in self.simulations:
+		for row in self.xfer_fn.simulations:
 			cz[int(row['DC'])] = np.append(cz[int(row['DC'])], [row['Z']])
 
 		zero = 0
@@ -138,21 +121,19 @@ class PZC(object):
 		*Note: saves wide/deep SOM 
 		'''
 		if not os.path.isdir(savepath):
-			raise ValueError("Save path must be a directory (3 files to be created)")
+			raise ValueError("Save path must be a directory")
 
-		PZC_path = os.path.join(savepath, 'PZC.pkl')
-		wideSOM_path = os.path.join(savepath, 'wide.pkl')
-		deepSOM_path = os.path.join(savepath, 'deep.pkl')
-
-		self.wide_SOM.save(wideSOM_path)
-		self.deep_SOM.save(deepSOM_path)
-		
 		to_save = {} 
 		ivars = ['pzchat', 'pzc', 'pcchat', 'save_path', 'redshifts'] 
-		ivars += getattr(self, "ivars_to_save", [])
 		for ivar in ivars:
 			to_save[ivar] = getattr(self, ivar, None)
 
+		xferfn_path = os.path.join(self.xfer_fn.save_path, 'xferfn.pkl')
+		self.xfer_fn.save(xferfn_path)
+		to_save['xfer_fn_path'] = xferfn_path
+		to_save['xfer_load_fn'] = self.xfer_fn.load_fn
+
+		PZC_path = os.path.join(savepath, 'PZC.pkl')
 		with open(PZC_path, 'wb') as f:
 			pickle.dump(to_save, f)
 
@@ -164,18 +145,14 @@ def load_PZC(savepath):
 	
 	with open(os.path.join(savepath, 'PZC.pkl'), 'rb') as f:
 		sd = pickle.load(f)
-	
-	wide_SOM = load_SOM(os.path.join(savepath, 'wide.pkl'))
-	deep_SOM = load_SOM(os.path.join(savepath, 'deep.pkl'))
 
-	pzc = PZC(wide_SOM, deep_SOM, sd['save_path'],) 
+	xfer = sd['xfer_load_fn'](sd['xfer_fn_path'])
+	pzc = PZC(xfer, sd['save_path'],) 
 
 	for ivar in sd:
 		setattr(pzc, ivar, sd[ivar])
 
 	return pzc
-
-
 
 
 

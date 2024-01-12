@@ -143,7 +143,7 @@ class Result(object):
 
 		# for selection effects
 		self.pzc = pzc
-		self.pzc.load_realizations()
+		self.pzc.xfer_fn.load_realizations()
 
 	def calculate_Nz(self, apply_bin_cond=True, weights=None, zmax=6, fill_zeros=False):
 

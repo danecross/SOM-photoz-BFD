@@ -9,10 +9,10 @@ from random import sample
 from astropy.table import Table, vstack
 
 from pipeline_tools import *
-from PZC import PZC, load_PZC
 from SOM import load_SOM
+from XferFn import XferFn
 
-class GaussianXfer(PZC):
+class GaussianXfer(XferFn):
 
 	def __init__(self, wide_SOM, deep_SOM, outpath, sky_cov, n_realizations=100,
 						deep_flux_col_fmt="Mf_", use_covariances=True):
@@ -21,8 +21,10 @@ class GaussianXfer(PZC):
 		self.deep_flux_col_fmt = deep_flux_col_fmt
 		self.use_covariances = use_covariances
 
-		super().__init__(wide_SOM, deep_SOM, outpath)
-		
+		self.wide_SOM = wide_SOM
+		self.deep_SOM = deep_SOM
+		self.save_path = os.path.abspath(outpath)
+
 		self.sky_cov_path = sky_cov
 		with open(sky_cov, 'rb') as f:
 			self.coverrs = pickle.load(f)
@@ -36,7 +38,7 @@ class GaussianXfer(PZC):
 		if use_covariances:
 			self.noise_options = np.sqrt(self.noise_options)
 
-		self.ivars_to_save = ['sky_cov_path', 'use_covariances',]
+		self.load_fn = load_GaussianXfer
 
 	def generate_realizations(self, mask_SN=(7,200)):
 		'''
@@ -132,31 +134,44 @@ class GaussianXfer(PZC):
 
 		setattr(self, "simulations", Table.read(savepath))
 
+	def save(self, savepath=None):
+
+		savepath = savepath if savepath is not None else os.path.join(self.save_path, 'xferfn.pkl')
+
+		ivars_to_save = ['n_realizations', 'sky_cov_path', 'deep_flux_col_fmt',
+								'sky_cov_path', 'save_path', 'use_covariances']
+		d = {ivar: getattr(self, ivar) for ivar in ivars_to_save}
+
+		d['wide_SOM_savepath'] = os.path.join(self.wide_SOM.save_path, "NoiseSOM.pkl")
+		d['deep_SOM_savepath'] = os.path.join(self.deep_SOM.save_path, "NoiseSOM.pkl")
+
+		self.wide_SOM.save(d['wide_SOM_savepath'])
+		self.deep_SOM.save(d['deep_SOM_savepath'])
+
+		savepath = savepath if savepath is not None else self.save_path
+		with open(savepath, 'wb') as f:
+			pickle.dump(d, f)
+
 def load_GaussianXfer(savepath):
-   '''
-   Loads a saved PZC object.
-   '''
+	'''
+	Loads a saved GaussianXfer object.
+	'''
 
-   with open(os.path.join(savepath, 'PZC.pkl'), 'rb') as f:
-      sd = pickle.load(f)
+	with open(savepath, 'rb') as f:
+		d = pickle.load(f)
 
-   wide_SOM = load_SOM(os.path.join(savepath, 'wide.pkl'))
-   deep_SOM = load_SOM(os.path.join(savepath, 'deep.pkl'))
+	wide_SOM = load_SOM(d['wide_SOM_savepath'])
+	deep_SOM = load_SOM(d['deep_SOM_savepath'])
 
-   pzc = GaussianXfer(wide_SOM, deep_SOM, sd['save_path'],
-            			 sky_cov=sd.get('sky_cov_path',None),
-            			 n_realizations=sd.get('n_realizations', None),
-            			 use_covariances=sd.get('use_covariances'))
-
-   for ivar in sd:
-      setattr(pzc, ivar, sd[ivar])
-
-   return pzc
+	gxfr = GaussianXfer(wide_SOM, deep_SOM, 
+								d['save_path'], d['sky_cov_path'], 
+								n_realizations=d['n_realizations'],
+								deep_flux_col_fmt=d['deep_flux_col_fmt'], 
+								use_covariances=d['use_covariances'])
 
 
 
-
-
+	return gxfr
 
 
 
