@@ -191,16 +191,16 @@ class SOM(object):
 			fluxes = self.validate_fluxes 
 			errs = self.validate_err 
 
-		def assign_som(index):
-			cells, _ = self.SOM.classify(fluxes[inds[index]], 
-                                      errs[inds[index]])
+		def assign_som(SOM, fluxes, errs):
+			cells, _ = SOM.classify(fluxes, errs)
 			return cells
     
 		num_inds = min(len(fluxes), num_inds)
 		inds = np.array_split(np.arange(len(fluxes)),num_inds)
-		with mp.Pool(num_threads) as p: 
-			results = list(tqdm.tqdm(p.imap(assign_som, range(num_inds)), total=num_inds))
-        
+		args = [(self.SOM, fluxes[inds[index]], errs[inds[index]],) for index in range(num_inds)]
+		with mp.Pool() as p: 
+			results = p.starmap(assign_som, tqdm.tqdm(args, total=len(args)))
+
 		assignments = []
 		for res in results: assignments = np.append(assignments,res)
       
@@ -211,7 +211,7 @@ class SOM(object):
 
 		return assignments
 
-	def classify(self, table, num_threads=150, num_inds=10000, savepth=None,
+	def classify(self, table, num_threads=150, num_inds=100000, savepth=None,
 					 flux_fmt=None, err_fmt=None, cov_fmt=None):
 		
 		flux_colname = self.col_fmt if flux_fmt is None else flux_fmt
