@@ -17,6 +17,24 @@ class GaussianSims(Simulations):
 	def __init__(self, outpath, sky_cov, full_catalog, wide_SOM_bands, 
 					 sim_save=None, n_realizations=100,
 					 deep_flux_col_fmt="Mf_", use_covariances=True):
+
+		'''
+		Object for generating Gaussian flux simulations. 
+
+		Args:
+			- outpath (str): path for default outputs
+			- sky_cov (str): path to healpix map of average error over the footprint*
+			- full_catalog (str): path to the deep field catalog to be used
+			- wide_SOM_bands (str): wide bands to simulate
+			- sim_save (str, opt): alternate path to save the simulations (scratch, this file can be very large)
+			- n_realizations (int, opt): number of wide realizations for each deep field galaxy
+			- deep_flux_col_fmt (str, opt): starting string for the fluxes to be used for simulation
+			- use_covariances (bool, opt): flag to use covariances (square of the error)
+
+		*the sky covariance map should be a pickled healpix map
+
+		'''
+
 		
 		self.n_realizations = n_realizations
 		self.deep_flux_col_fmt = deep_flux_col_fmt
