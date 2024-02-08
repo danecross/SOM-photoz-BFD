@@ -1,7 +1,7 @@
 
 from abc import ABC, abstractmethod
 
-class XferFn(ABC):
+class Simulations(ABC):
 
 	@abstractmethod
 	def generate_realizations(self):
@@ -14,5 +14,7 @@ class XferFn(ABC):
 		pass
 
 
+
+	
 
 

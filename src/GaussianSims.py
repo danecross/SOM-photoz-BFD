@@ -6,28 +6,33 @@ import multiprocess as mp
 import tqdm
 
 from random import sample
-from astropy.table import Table, vstack
+from astropy.table import Table, vstack, Column, MaskedColumn
 
 from pipeline_tools import *
 from SOM import load_SOM
-from XferFn import XferFn
+from XferFn import Simulations
 
-class GaussianXfer(XferFn):
+class GaussianSims(Simulations):
 
-	def __init__(self, wide_SOM, deep_SOM, outpath, sky_cov, n_realizations=100,
-						deep_flux_col_fmt="Mf_", use_covariances=True):
+	def __init__(self, outpath, sky_cov, full_catalog, wide_SOM_bands, 
+					 sim_save=None, n_realizations=100,
+					 deep_flux_col_fmt="Mf_", use_covariances=True):
 		
 		self.n_realizations = n_realizations
 		self.deep_flux_col_fmt = deep_flux_col_fmt
 		self.use_covariances = use_covariances
+		self.wide_SOM_bands = wide_SOM_bands
 
-		self.wide_SOM = wide_SOM
-		self.deep_SOM = deep_SOM
 		self.save_path = os.path.abspath(outpath)
+		self.sim_save = os.path.abspath(sim_save) if sim_save is not None \
+								else self.save_path
 
 		self.sky_cov_path = sky_cov
 		with open(sky_cov, 'rb') as f:
 			self.coverrs = pickle.load(f)
+
+		self.full_catalog_pth = full_catalog
+		self.full_catalog = Table.read(full_catalog, memmap=True)
 
 		nonzero_mask = np.array(self.coverrs[:,0].nonzero()[0])
 		try:
@@ -38,7 +43,7 @@ class GaussianXfer(XferFn):
 		if use_covariances:
 			self.noise_options = np.sqrt(self.noise_options)
 
-		self.load_fn = load_GaussianXfer
+		self.load_fn = load_GaussianSims
 
 	def generate_realizations(self, mask_SN=(7,200)):
 		'''
@@ -51,8 +56,8 @@ class GaussianXfer(XferFn):
 		'''
 
 		# generates n_realizations fluxes for single deep field galaxy
-		def _gen_fluxes(gal_to_sim, noise_options, n_realizations, bands):
-			template_fluxes = [gal_to_sim[self.deep_flux_col_fmt+s] for s in bands]
+		def _gen_fluxes(gal_to_sim, noise_options, n_realizations, bands, deep_col_fmt):
+			template_fluxes = [gal_to_sim[deep_col_fmt+s] for s in bands]
 
 			idcs = np.array(sample(range(noise_options.shape[0]), n_realizations))
 			background_truths = np.array([noise_options[idcs, i]
@@ -67,7 +72,7 @@ class GaussianXfer(XferFn):
 
 				wide_fluxes[:,i] = np.array([tf]*n_realizations) + poisson_noise[:,i] + background_noise[:,i]
 
-				wide_fluxes_err[:,i] = background_truths[:,i] #TODO: figure out if this is okay
+				wide_fluxes_err[:,i] = background_truths[:,i] 
 
 			return wide_fluxes, wide_fluxes_err
 
@@ -80,14 +85,15 @@ class GaussianXfer(XferFn):
 
 			return wide_fluxes[mask], wide_fluxes_err[mask]
 
-		# classifies simulated wide fluxes into the wide SOM
-		def _classify(wide_fluxes, wide_fluxes_err, wide_SOM, gal_to_sim):
+		def _make_tables(gal_to_sim, wide_fluxes, wide_fluxes_err, bands):
 
-			cells, _ = wide_SOM.SOM.classify(wide_fluxes, wide_fluxes_err)
+			tlen = wide_fluxes.shape[0]
+			if tlen==0: return Table()
 
-			t = Table([[gal_to_sim['CA']]*len(cells), cells, [gal_to_sim['COSMOS_PHOTZ']]*len(cells)],
-						 names=['DC', 'WC', 'Z'])
-			for j,b in enumerate(wide_SOM.bands):
+			t = Table([[np.ma.masked]*tlen]*2 + [[gal_to_sim['ID']]*tlen] ,
+						 names=['DC', 'WC', 'ID'])
+
+			for j,b in enumerate(bands):
 				t['Mf_%s'%b] = wide_fluxes[:,j]
 				t['err_Mf_%s'%b] = wide_fluxes_err[:,j]
 
@@ -96,11 +102,12 @@ class GaussianXfer(XferFn):
 		# multiprocess pool for parallelizing the flux generation process
 		with mp.Pool(100) as p:
 
-			gals_to_sim = [row for row in self.deep_SOM.validate_sample]
+			gals_to_sim = [row for row in self.full_catalog]
 			num_inds = len(gals_to_sim)
 
 			# generate fluxes in parallel
-			args = [(gts, self.noise_options, self.n_realizations, self.wide_SOM.bands,)
+			args = [(gts, self.noise_options, self.n_realizations, 
+						self.wide_SOM_bands, self.deep_flux_col_fmt,)
 						for gts in gals_to_sim]
 			generated_fluxes = p.starmap(_gen_fluxes, tqdm.tqdm(args, total=num_inds))
 
@@ -110,12 +117,13 @@ class GaussianXfer(XferFn):
 			else:
 				masked_fluxes = generated_fluxes
 
-			# classify wide fluxes and make final "catalogs"
-			args = [(wf, wfe, self.wide_SOM, gts,) for (wf, wfe), gts in zip(masked_fluxes, gals_to_sim)]
-			results = p.starmap(_classify, tqdm.tqdm(args, total=num_inds))
-
-		simulations = vstack(results)
-		simulations.write(os.path.join(self.save_path, "simulations.fits"), format='fits', overwrite=True)
+			# save results to file
+			args = [(gts, wf, wfe, self.wide_SOM_bands) 
+							for (wf, wfe), gts in zip(masked_fluxes, gals_to_sim)]
+			simulations_to_stack = p.starmap(_make_tables, tqdm.tqdm(args, total=len(args)))
+		
+		simulations = vstack(simulations_to_stack)		
+		simulations.write(os.path.join(self.sim_save, "simulations.fits"), format='fits', overwrite=True)
 		setattr(self, "simulations", simulations)
 
 	def load_realizations(self, alternate_save_path=None):
@@ -130,7 +138,7 @@ class GaussianXfer(XferFn):
 		if alternate_save_path is not None:
 			savepath = alternate_save_path
 		else:
-			savepath = os.path.join(self.save_path, "simulations.fits")
+			savepath = os.path.join(self.simsave, "simulations.fits")
 
 		setattr(self, "simulations", Table.read(savepath))
 
@@ -139,20 +147,15 @@ class GaussianXfer(XferFn):
 		savepath = savepath if savepath is not None else os.path.join(self.save_path, 'xferfn.pkl')
 
 		ivars_to_save = ['n_realizations', 'sky_cov_path', 'deep_flux_col_fmt',
-								'sky_cov_path', 'save_path', 'use_covariances']
+								'sky_cov_path', 'save_path', 'use_covariances', 
+								'full_catalog_pth']
 		d = {ivar: getattr(self, ivar) for ivar in ivars_to_save}
-
-		d['wide_SOM_savepath'] = os.path.join(self.wide_SOM.save_path, "NoiseSOM.pkl")
-		d['deep_SOM_savepath'] = os.path.join(self.deep_SOM.save_path, "NoiseSOM.pkl")
-
-		self.wide_SOM.save(d['wide_SOM_savepath'])
-		self.deep_SOM.save(d['deep_SOM_savepath'])
 
 		savepath = savepath if savepath is not None else self.save_path
 		with open(savepath, 'wb') as f:
 			pickle.dump(d, f)
 
-def load_GaussianXfer(savepath):
+def load_GaussianSims(savepath):
 	'''
 	Loads a saved GaussianXfer object.
 	'''
@@ -160,11 +163,8 @@ def load_GaussianXfer(savepath):
 	with open(savepath, 'rb') as f:
 		d = pickle.load(f)
 
-	wide_SOM = load_SOM(d['wide_SOM_savepath'])
-	deep_SOM = load_SOM(d['deep_SOM_savepath'])
-
-	gxfr = GaussianXfer(wide_SOM, deep_SOM, 
-								d['save_path'], d['sky_cov_path'], 
+	gxfr = GaussianSims(d['save_path'], d['sky_cov_path'], 
+								d['full_catalog_pth'],
 								n_realizations=d['n_realizations'],
 								deep_flux_col_fmt=d['deep_flux_col_fmt'], 
 								use_covariances=d['use_covariances'])

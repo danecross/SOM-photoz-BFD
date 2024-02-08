@@ -6,20 +6,18 @@ import pickle
 import pandas as pd
 from astropy.table import Table
 
-from XferFn import XferFn
+from XferFn import Simulations
 from SOM import load_SOM
 
-class ExternalXfer(XferFn):
+class ExternalSims(Simulations):
 
-	def __init__(self, wide_SOM, deep_SOM, outpath,
+	def __init__(self, outpath,
 					 balrog_rlzns=None,
 					 use_covariances=False, 
 					 deep_flux_fmt=None, deep_cov_fmt=None, deep_err_fmt=None,
 					 wide_flux_fmt=None, wide_cov_fmt=None, wide_err_fmt=None,):
 
 		
-		self.wide_SOM = wide_SOM
-		self.deep_SOM = deep_SOM
 		self.save_path = outpath
 		self.balrog_path = balrog_rlzns
 		self.use_covariances = use_covariances
@@ -32,23 +30,7 @@ class ExternalXfer(XferFn):
 		self.load_fn = load_ExternalXfer
 
 	def generate_realizations(self, balrog_path=None, override=False):
-		'''Takes the deep-to-wide table and classifies them into SOMs.'''
-
-		if not hasattr(self, 'simulations'): self.load_realizations()
-
-		svpth = os.path.join(self.save_path, '')
-		deep_assignments = self._get_assignments(svpth+"deep_assignments.pkl", self.deep_SOM, 
-																flux_fmt=self.deep_flux_fmt,
-																err_fmt = self.deep_err_fmt, 
-																cov_fmt = self.deep_cov_fmt, override=override)
-
-		wide_assignments = self._get_assignments(svpth+"wide_assignments.pkl", self.wide_SOM, 
-																flux_fmt= self.wide_flux_fmt,
-																err_fmt = self.wide_err_fmt, 
-																cov_fmt = self.wide_cov_fmt, override=override)
-	
-		self.simulations['DC'] = deep_assignments
-		self.simulations['WC'] = wide_assignments
+		raise NotImplementedError("This class should be used with simulations that are made externally.")
 
 	def _get_assignments(self, savepath, som, 
 								flux_fmt=None, err_fmt=None, cov_fmt=None, 
@@ -85,18 +67,12 @@ class ExternalXfer(XferFn):
 							
 		d = {ivar: getattr(self, ivar) for ivar in ivars_to_save}
 
-		d['wide_SOM_savepath'] = os.path.join(self.wide_SOM.save_path, "NoiseSOM.pkl")
-		d['deep_SOM_savepath'] = os.path.join(self.deep_SOM.save_path, "NoiseSOM.pkl")
-
-		self.wide_SOM.save(d['wide_SOM_savepath'])
-		self.deep_SOM.save(d['deep_SOM_savepath'])
-
 		savepath = savepath if savepath is not None else self.save_path
 		with open(savepath, 'wb') as f:
 			pickle.dump(d, f)
 
 
-def load_ExternalXfer(savepath):
+def load_ExternalSims(savepath):
 	'''
 	Loads a saved ExternalXfer object.
 	'''
@@ -104,10 +80,7 @@ def load_ExternalXfer(savepath):
 	with open(savepath, 'rb') as f:
 		d = pickle.load(f)
 
-	wide_SOM = load_SOM(d['wide_SOM_savepath'])
-	deep_SOM = load_SOM(d['deep_SOM_savepath'])
-
-	exfr = ExternalXfer(wide_SOM, deep_SOM, d['save_path'],
+	exfr = ExternalSims(d['save_path'],
 								balrog_rlzns=d['balrog_path'],
                 			use_covariances=d['use_covariances'],
                 			deep_flux_fmt=d['deep_flux_fmt'], 
