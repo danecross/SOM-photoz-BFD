@@ -12,31 +12,36 @@ from astropy.table import Table, vstack
 import pandas as pd
 
 from pipeline_tools import *
-from SOM import load_SOM
 
 class PZC(object):
 
-	def __init__(self, xfer_fn, redshift_catalog, outpath):
+	def __init__(self, simulations_path, redshift_catalog, outpath, wideSOM_res, deepSOM_res, 
+						redshift_colname='Z'):
 		
 		'''
 		Initializer for PZC class. 
 
 		args:
-			- xfer_fn (obj): the trasnfer function being used to make the redshift map
+			- simulations_path (str): path to the classified simulations
 			- redshift_catalog (str): path to a classified catalog of wide field 
 											  galaxies with redshift information
 			- outpath (str): the directory to which we save all results
-
+			- wideSOM_res (int): resolution of the wide SOM
+			- deepSOM_res (int): resolution of the deep SOM
+			- redshift_colname (str, opt): name of the redshift column in the above catalog
 		'''
 
-		self.xfer_fn = xfer_fn
+		self.sims_pth = simulations_path
+		self.simulations = Table.read(simulations_path, memmap=True)
 		
 		self.z_cat_pth = redshift_catalog
 		self.z_cat = Table.read(redshift_catalog, memmap=True)
 
-		self.wide_SOM = self.xfer_fn.wide_SOM
-		self.deep_SOM = self.xfer_fn.deep_SOM
+		self.wideSOM_res = wideSOM_res
+		self.deepSOM_res = deepSOM_res
 		self.save_path = outpath
+		
+		self.zcol = redshift_colname
 
 
 	def make_redshift_map(self, weights=None, zmax=4, fill_zeros=False):
@@ -53,16 +58,16 @@ class PZC(object):
 		setattr(self, "pzchat", self._get_p_z_chat())
 
 		peak_probs = np.array([E(self.redshifts, pzc) for pzc in self.pzchat])
-		redshift_map = peak_probs.reshape(self.wide_SOM.somres,self.wide_SOM.somres)
+		redshift_map = peak_probs.reshape(self.wideSOM_res,self.wideSOM_res)
 
 		return redshift_map
 
 	def _get_p_c_chat(self, weights):
 
-		ncells_deep, ncells_wide = self.deep_SOM.somres**2,self.wide_SOM.somres**2
+		ncells_deep, ncells_wide = self.deepSOM_res**2,self.wideSOM_res**2
 		pcchat = np.zeros((ncells_deep,ncells_wide))
 
-		for dc,wc in zip(self.xfer_fn.simulations['DC'], self.xfer_fn.simulations['WC']):
+		for dc,wc in zip(self.simulations['DC'], self.simulations['WC']):
 			pcchat[int(dc),:] += np.histogram(wc, bins=ncells_wide, range=(-0.5,ncells_wide))[0]
 
 		# normalize
@@ -83,17 +88,17 @@ class PZC(object):
 
 	def _get_p_z_c(self, zmax, fill_zeros=False):
 		
-		ncells_deep, ncells_wide = self.deep_SOM.somres**2,self.wide_SOM.somres**2
+		ncells_deep, ncells_wide = self.deepSOM_res**2,self.wideSOM_res**2
 		
-		zmax = np.max(self.xfer_fn.simulations['Z']) if zmax is None else zmax
+		zmax = np.max(self.simulations[self.zcol]) if zmax is None else zmax
 		zrange = (0,zmax) ; step_size = 0.01 
 
 		redshifts = np.arange(zrange[0], zrange[1]+step_size, step_size) 
 		setattr(self, 'redshifts', redshifts)
 
 		cz = [np.array([])]*ncells_deep 
-		for row in self.xfer_fn.simulations:
-			cz[int(row['DC'])] = np.append(cz[int(row['DC'])], [row['Z']])
+		for row in self.simulations:
+			cz[int(row['DC'])] = np.append(cz[int(row['DC'])], [row[self.zcol]])
 
 		zero = 0
 		pzc_unnormed = np.zeros((len(redshifts), ncells_deep)) 
@@ -113,7 +118,7 @@ class PZC(object):
 	def _get_p_z_chat(self):
 		pzchat = np.einsum('zt,td->dz', self.pzc, self.pcchat)
 
-		for i in range(self.wide_SOM.somres**2):
+		for i in range(self.wideSOM_res**2):
 			if np.sum(pzchat[i]) > 0:
 				pzchat[i] = pzchat[i]/np.sum(pzchat[i])
 
@@ -133,11 +138,6 @@ class PZC(object):
 		for ivar in ivars:
 			to_save[ivar] = getattr(self, ivar, None)
 
-		xferfn_path = os.path.join(self.xfer_fn.save_path, 'xferfn.pkl')
-		self.xfer_fn.save(xferfn_path)
-		to_save['xfer_fn_path'] = xferfn_path
-		to_save['xfer_load_fn'] = self.xfer_fn.load_fn
-
 		PZC_path = os.path.join(savepath, 'PZC.pkl')
 		with open(PZC_path, 'wb') as f:
 			pickle.dump(to_save, f)
@@ -151,8 +151,7 @@ def load_PZC(savepath):
 	with open(os.path.join(savepath, 'PZC.pkl'), 'rb') as f:
 		sd = pickle.load(f)
 
-	xfer = sd['xfer_load_fn'](sd['xfer_fn_path'])
-	pzc = PZC(xfer, sd['z_cat_pth'], sd['save_path'],) 
+	pzc = PZC(sd['z_cat_pth'], sd['save_path'],) 
 
 	for ivar in sd:
 		setattr(pzc, ivar, sd[ivar])
