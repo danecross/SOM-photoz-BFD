@@ -16,19 +16,24 @@ from SOM import load_SOM
 
 class PZC(object):
 
-	def __init__(self, xfer_fn, outpath):
+	def __init__(self, xfer_fn, redshift_catalog, outpath):
 		
 		'''
 		Initializer for PZC class. 
 
 		args:
 			- xfer_fn (obj): the trasnfer function being used to make the redshift map
+			- redshift_catalog (str): path to a classified catalog of wide field 
+											  galaxies with redshift information
 			- outpath (str): the directory to which we save all results
 
 		'''
 
 		self.xfer_fn = xfer_fn
 		
+		self.z_cat_pth = redshift_catalog
+		self.z_cat = Table.read(redshift_catalog, memmap=True)
+
 		self.wide_SOM = self.xfer_fn.wide_SOM
 		self.deep_SOM = self.xfer_fn.deep_SOM
 		self.save_path = outpath
@@ -124,7 +129,7 @@ class PZC(object):
 			raise ValueError("Save path must be a directory")
 
 		to_save = {} 
-		ivars = ['pzchat', 'pzc', 'pcchat', 'save_path', 'redshifts'] 
+		ivars = ['z_cat_pth', 'pzchat', 'pzc', 'pcchat', 'save_path', 'redshifts'] 
 		for ivar in ivars:
 			to_save[ivar] = getattr(self, ivar, None)
 
@@ -147,7 +152,7 @@ def load_PZC(savepath):
 		sd = pickle.load(f)
 
 	xfer = sd['xfer_load_fn'](sd['xfer_fn_path'])
-	pzc = PZC(xfer, sd['save_path'],) 
+	pzc = PZC(xfer, sd['z_cat_pth'], sd['save_path'],) 
 
 	for ivar in sd:
 		setattr(pzc, ivar, sd[ivar])
