@@ -4,12 +4,13 @@ import numpy as np
 from astropy.table import Table
 import multiprocess as mp
 import tqdm
+import os
 
 from NoiseSOM import *
 
 class SOM(object):
 
-	def __init__(self, resolution, train_cat, validate_cat, 
+	def __init__(self, resolution, train_cat, 
 						analysis_output_path='./',
 						col_fmt="Mf_", cov_fmt="cov_Mf_", err_fmt=None):
 		'''
@@ -18,7 +19,6 @@ class SOM(object):
 		args: 
 			- resolution (int): the square side size of the SOM
 			- train_cat (str): path to the randomly selected catalog for training the SOM
-			- validate_cat (str): path to the randomly selected catalog for validating the SOM
 			- *analysis_output_path (str): directory to save analysis ouptuts
 			- *col_fmt (str): format for the flux columns the catalog
 			- *cov_fmt (str): format for the flux covariance columns in the catalog (if errors 
@@ -35,9 +35,8 @@ class SOM(object):
 		self.save_path = os.path.abspath(analysis_output_path)
 		self.somres = resolution
 		self.train_cat_path = os.path.abspath(train_cat)
-		self.validate_cat_path = os.path.abspath(validate_cat)
 			
-		self._get_catalogs(train_cat, validate_cat, col_fmt, cov_fmt, err_fmt)
+		self._get_catalogs(train_cat, col_fmt, cov_fmt, err_fmt)
 		self.SOM = self._initialize_SOM(self.train_fluxes, self.train_err)
 		self.trained = False
 
@@ -45,9 +44,9 @@ class SOM(object):
 		self.cov_fmt = cov_fmt
 		self.err_fmt = err_fmt
 
-	def _get_catalogs(self, train_path, validate_path, col_fmt, cov_fmt, err_fmt):
+	def _get_catalogs(self, train_path, col_fmt, cov_fmt, err_fmt):
 
-		for path, cattype in [(train_path, 'train'), (validate_path, 'validate')]:
+		for path, cattype in [(train_path, 'train')]:
 			t = Table.read(train_path, format='fits')
 			self._get_available_bands(t, col_fmt, cov_fmt, err_fmt) 
 
@@ -140,23 +139,6 @@ class SOM(object):
 		setattr(self, 'SOM', som)
 
 
-	def validate(self, overwrite=False, num_inds=1000):
-		'''Classify the validation data to examine efficacy of training.'''
-
-		if len(self.validate_sample) == 0: return
-
-		if not overwrite and self.save_path is not None and \
-			 os.path.exists(os.path.join(self.save_path, "assignments.pkl")):
-			assignments = self._load_assignments()
-		else:
-			assignments = self._run_assignments(num_inds=num_inds)
-		
-
-		self.validate_sample['CA'] = assignments
-
-		grouped_by_cell = self.validate_sample.group_by('CA')
-		setattr(self, 'grouped_by_cell', grouped_by_cell)
-
 	def _load_assignments(self):
 		'''Load previously calculated assignments.'''
 		fpath = os.path.join(self.save_path, "assignments.pkl")
@@ -164,14 +146,14 @@ class SOM(object):
 			assignments = pickle.load(f)
 		return assignments
 
-	def _run_assignments(self, table=None, num_inds=1000, save=True, num_threads=50,
+	def _run_assignments(self, table, num_inds=1000, save=True, num_threads=50,
 					 			col_fmt=None, err_fmt=None, cov_fmt=None):
 
 		'''
 		Assign fluxes to cells in trained SOM. 
 		
 		Args: 
-			- *table (astropy.Table): table to classify. If None will classify the validate sample.
+			- *table (astropy.Table): table to classify. 
 			- *num_inds (int): number of subtables to split the main table into
 			- *save (str, bool): flag for saving the assignments. If True, will save to the 
 										default save path in a file called "assignments.pkl". If 
@@ -182,14 +164,10 @@ class SOM(object):
 			- cov_fmt (str): format of the covariance columns. If None, defaults to SOM format.
 		'''
 
-		if table is not None: # classify the table specified, not the validation set
-			flx_cn, fer_cn = self._get_column_names(table, col_fmt, cov_fmt, err_fmt)
-			fluxes = self._get_columns(table, flx_cn)
-			if err_fmt is not None: errs = self._get_columns(table, fer_cn)
-			else: errs = np.sqrt(self._get_columns(table, fer_cn))
-		else:
-			fluxes = self.validate_fluxes 
-			errs = self.validate_err 
+		flx_cn, fer_cn = self._get_column_names(table, col_fmt, cov_fmt, err_fmt)
+		fluxes = self._get_columns(table, flx_cn)
+		if err_fmt is not None: errs = self._get_columns(table, fer_cn)
+		else: errs = np.sqrt(self._get_columns(table, fer_cn))
 
 		def assign_som(SOM, fluxes, errs):
 			cells, _ = SOM.classify(fluxes, errs)
@@ -226,35 +204,13 @@ class SOM(object):
 		return assignments
 		
 
-
-	def get(self, statistic, colname=None):
-
-		if statistic == 'occupation': # return somres x somres array of number of galaxies per cell
-			occupation=np.histogram(self.validate_sample['CA'], 
-                        				bins=self.somres*self.somres, 
-                        				range=(0,self.somres*self.somres))[0]
-			return occupation.reshape((self.somres, self.somres))
-		elif colname is None:
-			raise ValueError("Must specify column to aggregate")
-		else: # return somres x somres array of aggregated statistic
-			if statistic == 'mean': 
-				agg = self.grouped_by_cell.groups.aggregate(masked_nanmean)
-			elif statistic == 'std':
-				agg = self.grouped_by_cell.groups.aggregate(masked_nanstd)
-			else:
-				raise NotImplementedError("Must define aggregate operation %s in SOM class"%statistic)
-
-			stat = np.zeros(self.somres**2)
-			stat[np.array(agg['CA'], dtype=int)] = agg[colname]
-			return stat.reshape((self.somres, self.somres))
-
 	def save(self, savepath='.'):
 		
 		if os.path.isdir(savepath): 
 			raise ValueError("SOM save path must include the name of the file to be saved")
 
 		to_save = {} 
-		ivars = ['save_path', 'somres', 'train_cat_path', 'validate_cat_path',
+		ivars = ['save_path', 'somres', 'train_cat_path', 
 					'bands', 'SOM', 'col_fmt', 'cov_fmt', 'err_fmt']
 		for ivar in ivars:
 			to_save[ivar] = getattr(self, ivar)
@@ -267,7 +223,7 @@ def load_SOM(savepath):
 	with open(savepath, 'rb') as f:
 		sd = pickle.load(f)
 
-	som = SOM(sd['somres'], sd['train_cat_path'], sd['validate_cat_path'], 
+	som = SOM(sd['somres'], sd['train_cat_path'],  
 						analysis_output_path=sd['save_path'], 
 						col_fmt=sd['col_fmt'], cov_fmt=sd['cov_fmt'], err_fmt=sd['err_fmt'])
 
@@ -276,7 +232,6 @@ def load_SOM(savepath):
 		if ivar in ivar_to_skip: continue
 		setattr(som, ivar, sd[ivar])
 
-	som.validate()
 	return som
 
 def masked_nanmean(col):
