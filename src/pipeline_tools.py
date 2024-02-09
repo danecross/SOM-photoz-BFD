@@ -41,7 +41,7 @@ def run_classification(tfname, comm, som, col_name, classify_kwargs={}):
 		return t
 
 def split_table(t, rank, size):
-
+	'''Splits an astropy table given a thread number and total number of threads.'''
 	srt, end = int(((rank-1)/size)*len(t)), int(((rank)/size)*len(t))
 	if rank == size-1: this_cat = t[srt:]
 	else: this_cat = t[srt:end]
@@ -56,7 +56,7 @@ def split_table(t, rank, size):
 
 # calculates the weights for a whole catalog
 def calculate_weights(somres, classified_table, out_path):
-
+	"""Calculates weights from ___ of ___."""
 	if type(classified_table) == str:
 		t = Table.read(classified_table_path)
 	else:
@@ -77,10 +77,12 @@ def calculate_weights(somres, classified_table, out_path):
 
 # converts flux to magnitude
 def flux_to_mag(f, const=30):
+    """Converts flux to magnitudes."""
 	 return -2.5 * np.log10(f) + const
 
 # calculates total signal to noise
 def SN(fluxes, fluxes_err, ):
+    """Calcualtes the Signal-to-Noise using Y3 weights."""
 	 g = fluxes[:,0] ; r = fluxes[:,1]
 	 i = fluxes[:,2] ; z = fluxes[:,3]
 	 
@@ -104,13 +106,13 @@ def SN_s_n(fluxes, fluxes_err, ):
 	 return signal/noise, signal, noise
 
 
-# calculate the expectation value of a distribution
 def E(v, pv):
+	'''Calcuates the expectation value of a given distribution.'''
 	if np.sum(pv)==0: return 0
 	return np.average(v, weights=pv) 
 
-# calculate the dispersion of a distribution
 def D(v, pv):
+	'''Calculates the dispersion of a given distribution.'''
 	return np.sqrt(E(v**2, pv) - E(v,pv)**2)
 
 
