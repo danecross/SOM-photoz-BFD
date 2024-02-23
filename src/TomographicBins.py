@@ -19,21 +19,6 @@ class TomographicBins(object):
 
 		self.classified = False
 
-	def classify(self, num_inds=1000, overwrite=False):
-
-		ws = self.pzc.wide_SOM
-		som_copy = SOM(ws.somres, 
-							self.large_data_path,
-							self.large_data_path,		
-							analysis_output_path=ws.save_path) 
-
-		som_copy.load()
-		som_copy.validate(overwrite=overwrite, num_inds=num_inds)
-
-		table_outpath = os.path.join(self.outpath, "assigned_table.fits")
-		som_copy.grouped_by_cell.write(table_outpath, overwrite=True)
-
-
 	def make_bins(self, num_tomo_bins, **kwargs):
 		'''
 		Function to generate the tomographic bins
@@ -73,9 +58,8 @@ class TomographicBins(object):
 								 BSOM (Big data SOM). See BSOM.py for more information.
 		'''
 
-		som = self.pzc.wide_SOM 
-		available_bins = [int(i) for i in list(set(som.grouped_by_cell['CA']))]
-		som.validate(overwrite_assignments)
+		somres = self.pzc.wideSOM_res 
+		available_bins = [int(i) for i in range(somres**2)]
 		return available_bins, som.get('occupation').flatten()
 
 	def _assign_to_compost(self, available_bins, compost_sigma, occupation):
@@ -125,9 +109,6 @@ class PZCB(PZC):
 
 		self.pzc = pzc
 		self.simulations = subcatalog
-
-		self.deep_SOM = pzc.deep_SOM
-		self.wide_SOM = pzc.wide_SOM
 
 	#TODO: generate_realizations will be different for p(z|c,chat)
 	
@@ -198,6 +179,7 @@ class Result(object):
 
 		return compost, grouped_by_tbin
 
+	'''
 	def bin_sample(self, table):
 		if not 'WC' in table.colnames:
 			assignments = self.pzc.wide_SOM.classify(table)
@@ -205,7 +187,7 @@ class Result(object):
 		else:
 			assignments = table['WC']
 		return assignments, self._group_sims_by_tomobin(table)
-	
+	'''
 
 	def save(self, output_path):
 		
