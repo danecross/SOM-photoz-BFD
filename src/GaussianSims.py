@@ -10,9 +10,8 @@ from astropy.table import Table, vstack, Column, MaskedColumn
 
 from pipeline_tools import *
 from SOM import load_SOM
-from XferFn import Simulations
 
-class GaussianSims(Simulations):
+class GaussianSims(object):
 
 	def __init__(self, outpath, sky_cov, full_catalog, wide_SOM_bands, 
 					 sim_save=None, n_realizations=100,
