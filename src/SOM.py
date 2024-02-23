@@ -191,10 +191,15 @@ class SOM(object):
 
 	def classify(self, table, num_threads=150, num_inds=100000, savepth=None,
 					 flux_fmt=None, err_fmt=None, cov_fmt=None):
-		
-		flux_colname = self.col_fmt if flux_fmt is None else flux_fmt
-		flux_err_colname = self.err_fmt if err_fmt is None else err_fmt
-		flux_cov_colname = self.cov_fmt if cov_fmt is None else cov_fmt
+
+		if flux_fmt is None and err_fmt is None and cov_fmt is None:
+			flux_colname = self.col_fmt 
+			flux_err_colname = self.err_fmt 
+			flux_cov_colname = self.cov_fmt
+		else:
+			flux_colname = flux_fmt
+			flux_err_colname = err_fmt
+			flux_cov_colname = cov_fmt
 
 		assignments = self._run_assignments(table=table, save=savepth, 
 														num_threads=num_threads, num_inds=num_inds,

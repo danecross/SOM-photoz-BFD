@@ -90,14 +90,14 @@ class PZC(object):
 		
 		ncells_deep, ncells_wide = self.deepSOM_res**2,self.wideSOM_res**2
 		
-		zmax = np.max(self.simulations[self.zcol]) if zmax is None else zmax
+		zmax = np.max(self.z_cat[self.zcol]) if zmax is None else zmax
 		zrange = (0,zmax) ; step_size = 0.01 
 
 		redshifts = np.arange(zrange[0], zrange[1]+step_size, step_size) 
 		setattr(self, 'redshifts', redshifts)
 
 		cz = [np.array([])]*ncells_deep 
-		for row in self.simulations:
+		for row in self.z_cat:
 			cz[int(row['DC'])] = np.append(cz[int(row['DC'])], [row[self.zcol]])
 
 		zero = 0
