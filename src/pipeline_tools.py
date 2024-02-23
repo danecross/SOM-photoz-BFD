@@ -1,4 +1,5 @@
 
+import os
 from mpi4py import MPI
 from matplotlib import pyplot as plt
 import numpy as np
@@ -11,34 +12,37 @@ from astropy.table import Table
 ## Large-Scale Classification Scheme ##
 #######################################
 
-def run_classification(tfname, comm, som, col_name, classify_kwargs={}):
+def run_classification(tfname, som, metasave_path, rank, size,
+								classify_kwargs={}):
 	'''
 	Runs classifications in an MPI environment.
 
 	Args:
 		- tfname (str): filename of the table to classify
-		- comm (MPI COMM object): the communication object for the MPI process
 		- som (SOM): SOM instance to use to classify the data
-		- col_name (str): name of the classified column (usually 'WC'/'DC' for wide/deep classification)
+		- rank (int): rank of the process being run (modelled after MPI)
+		- size (int): total number of processes to run 
+							(or how many sections to split the input table into)
 		- classify_kwargs (dict): keyword arguments for the SOM classify function
 	'''
 
-	rank = comm.Get_rank() ; size = comm.Get_size()
+	rank = rank if rank is not None else comm.Get_rank() 
+	size = size if size is not None else comm.Get_size()
+	svpth = os.path.join(metasave_path, f"assignments_{rank}_{size}.pkl")
+	if os.path.exists(svpth):
+		with open(svpth, 'rb') as f:
+			assignments = pickle.load(f)
+		comm.send(assignments, dest=0, tag=11)
+		return
+
 	t = Table.read(tfname, memmap=True)
 	
 	if rank > 0:
-		this_cat = split_table(t, rank, size)
+		this_cat = split_table(t, rank, size) 
 		assignments = som.classify(this_cat, **classify_kwargs)
-		comm.send(assignments, dest=0, tag=11)
 
-	if rank == 0:
-		assignments = np.array([])
-		for i in range(1,size):
-			assignments = np.append(assignments,comm.recv(source=i, tag=11))
-
-		t[col_name] = assignments
-
-		return t
+		with open(svpth, 'wb') as f:
+			pickle.dump(assignments, f)
 
 def split_table(t, rank, size):
 	'''Splits an astropy table given a thread number and total number of threads.'''
@@ -77,12 +81,12 @@ def calculate_weights(somres, classified_table, out_path):
 
 # converts flux to magnitude
 def flux_to_mag(f, const=30):
-    """Converts flux to magnitudes."""
+	 """Converts flux to magnitudes."""
 	 return -2.5 * np.log10(f) + const
 
 # calculates total signal to noise
 def SN(fluxes, fluxes_err, ):
-    """Calcualtes the Signal-to-Noise using Y3 weights."""
+	 """Calcualtes the Signal-to-Noise using Y3 weights."""
 	 g = fluxes[:,0] ; r = fluxes[:,1]
 	 i = fluxes[:,2] ; z = fluxes[:,3]
 	 
