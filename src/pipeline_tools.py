@@ -30,28 +30,27 @@ def run_classification(tfname, som, metasave_path, rank, size,
 	size = size if size is not None else comm.Get_size()
 	svpth = os.path.join(metasave_path, f"assignments_{rank}_{size}.pkl")
 	if os.path.exists(svpth):
-		with open(svpth, 'rb') as f:
-			assignments = pickle.load(f)
-		comm.send(assignments, dest=0, tag=11)
 		return
 
 	t = Table.read(tfname, memmap=True)
 	
-	if rank > 0:
-		this_cat = split_table(t, rank, size) 
-		assignments = som.classify(this_cat, **classify_kwargs)
+	this_cat = split_table(t, rank, size)  
+	if len(this_cat) == 0: return
+	assignments = som.classify(this_cat, **classify_kwargs)
 
-		with open(svpth, 'wb') as f:
-			pickle.dump(assignments, f)
+	with open(svpth, 'wb') as f:
+		pickle.dump(assignments, f)
 
+# NOTE: meant to loop from 0 to size **inclusive** i.e. size+1 iterations
 def split_table(t, rank, size):
 	'''Splits an astropy table given a thread number and total number of threads.'''
-	srt, end = int(((rank-1)/size)*len(t)), int(((rank)/size)*len(t))
-	if rank == size-1: this_cat = t[srt:]
-	else: this_cat = t[srt:end]
+	chunk_size = len(t)//size
+	srt, end = chunk_size * (rank), chunk_size * (rank+1)
 
-	return this_cat
-
+	if rank == size: 
+		return t[srt:]
+	else:
+		return t[srt:end]
 
 
 ############################
