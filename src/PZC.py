@@ -134,7 +134,8 @@ class PZC(object):
 			raise ValueError("Save path must be a directory")
 
 		to_save = {} 
-		ivars = ['z_cat_pth', 'pzchat', 'pzc', 'pcchat', 'save_path', 'redshifts'] 
+		ivars = ['sims_pth', 'z_cat_pth', 'save_path', 
+						'wideSOM_res', 'deepSOM_res', 'z_col']
 		for ivar in ivars:
 			to_save[ivar] = getattr(self, ivar, None)
 
@@ -151,7 +152,8 @@ def load_PZC(savepath):
 	with open(os.path.join(savepath, 'PZC.pkl'), 'rb') as f:
 		sd = pickle.load(f)
 
-	pzc = PZC(sd['z_cat_pth'], sd['save_path'],) 
+	pzc = PZC(sd['sims_pth'], sd['z_cat_pth'], sd['save_path'],
+					sd['wideSOM_res'], sd['deepSOM_res'], sd['z_col'])
 
 	for ivar in sd:
 		setattr(pzc, ivar, sd[ivar])
