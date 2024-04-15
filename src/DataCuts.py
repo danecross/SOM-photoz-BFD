@@ -27,7 +27,8 @@ def get_noisetiers(covariances):
 
 	return noisetier_targets
 
-def get_sn_mask(Mf, covariances=None, preassigned_noisetiers=None, sn_min=7, sn_max=200):
+def get_sn_mask(Mf, covariances=None, preassigned_noisetiers=None, 
+					 sn_min=7, sn_max=200, flux_min=1500, flux_max=90000):
 	'''
 	Determines the mask for noise tier cuts.
 
@@ -60,6 +61,8 @@ def get_sn_mask(Mf, covariances=None, preassigned_noisetiers=None, sn_min=7, sn_
 		min_flux = sn_min * np.sqrt(means_cov_mf)
 		max_flux = sn_max * np.sqrt(means_cov_mf)
 		mask[mask_nt] = ((Mf[mask_nt] > min_flux) & (Mf[mask_nt] < max_flux))
+
+	mask = (mask & (Mf > flux_min) & (Mf < flux_max))
 
 	return mask
 
