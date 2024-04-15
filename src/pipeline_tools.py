@@ -33,7 +33,7 @@ def run_classification(tfname, som, metasave_path, rank, size,
 		return
 
 	t = Table.read(tfname, memmap=True)
-	
+
 	this_cat = split_table(t, rank, size)	
 	if len(this_cat) == 0: return
 	assignments = som.classify(this_cat, **classify_kwargs)
@@ -58,17 +58,17 @@ def split_table(t, rank, size):
 ############################
 
 # calculates the colors and magnitudes for a given table
-def get_cms(t, colfmt='Mf_', bands='griz'):
+def get_cms(t, colfmt='Mf_', bands='griz', decorator=''):
 
 	mask = np.ones(len(t), dtype=bool)
 	for b in bands:
 		mag = flux_to_mag(t[colfmt+b])
-		t['mag_'+b] = mag
+		t[decorator+'mag_'+b] = mag
 		mask = (mask & ~np.isnan(mag))
 		  
 	for b1,b2 in zip(bands, bands[1:]):
-		color = t['mag_'+b1] - t['mag_'+b2]
-		t[f'{b1}-{b2}'] = color
+		color = t[decorator+'mag_'+b1] - t[decorator+'mag_'+b2]
+		t[decorator+f'{b1}-{b2}'] = color
 	 
 	return t[mask]
 

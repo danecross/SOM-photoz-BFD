@@ -9,58 +9,46 @@ from pipeline_tools import *
 
 class TomographicBins(object):
 
-	def __init__(self, pzc, outpath, large_data_path=None, overwrite=False):
-		
+	def __init__(self, pzc, outpath):
+	
+		'''
+		Initializaer for TomographicBins object. 
+
+		Args:
+			- pzc
+			- outpath
+
+		'''
+	
 		self.pzc = pzc
 		self.outpath = outpath
 
-		if large_data_path is not None:
-			self.large_data_path = large_data_path
-
 		self.classified = False
 
-	def make_bins(self, num_tomo_bins, **kwargs):
+	def make_bins(self, num_tomo_bins, ng_per_WC, **kwargs):
 		'''
 		Function to generate the tomographic bins
 		
 		args:
 			- num_tomo_bins (int): number of tomographic bins
+			- ng_per_WC (np.array): number of galaxies assigned to each wide cell
 			- *compost_sigma (float): redshift sigma maximum for compost
-			- *ng_per_bin (np.array): array of pre-counted ng_per_bin 
 			- *weights (np.array): array of wide cell weights
 		'''
 
 		if kwargs.get('weights', None) is not None:
 			raise NotImplementedError
 		
-		if kwargs.get('ng_per_bin', None) is None:
-			available_bins, occupation = self._get_bin_populations()
-		else:
-			occupation = kwargs.get('ng_per_bin')
-			available_bins = [wc for wc,occ in enumerate(occupation) if occ>0]
+		available_bins = np.where(ng_per_WC > 0)[0]
 
 		compost_bin_WCs, available_bins, pct_in_compost = \
 			self._assign_to_compost(available_bins,
 											kwargs.get('compost_sigma',None),
-											occupation)
+											ng_per_WC)
 
-		binned_WCs = self._assign_to_tomo_bins(available_bins, num_tomo_bins, occupation)
+		binned_WCs = self._assign_to_tomo_bins(available_bins, num_tomo_bins, ng_per_WC)
 
 		return Result(self.pzc, binned_WCs, compost_bin_WCs)
-
-
-	def _get_bin_populations(self, overwrite_assignments=False):
-		'''
-		Gets the bin population for the sample from the wide SOM sample.
-
-		args: 
-			- *BSOM (BSOM): to get the population for the whole DES catalog, use a 
-								 BSOM (Big data SOM). See BSOM.py for more information.
-		'''
-
-		somres = self.pzc.wideSOM_res 
-		available_bins = [int(i) for i in range(somres**2)]
-		return available_bins, som.get('occupation').flatten()
 
 	def _assign_to_compost(self, available_bins, compost_sigma, occupation):
 
@@ -124,7 +112,6 @@ class Result(object):
 
 		# for selection effects
 		self.pzc = pzc
-		self.pzc.xfer_fn.load_realizations()
 
 	def calculate_Nz(self, apply_bin_cond=True, weights=None, zmax=6, fill_zeros=False):
 

@@ -32,10 +32,10 @@ class PZC(object):
 		'''
 
 		self.sims_pth = simulations_path
-		self.simulations = Table.read(simulations_path, memmap=True)
+		self.simulations = Table.read(simulations_path)
 		
 		self.z_cat_pth = redshift_catalog
-		self.z_cat = Table.read(redshift_catalog, memmap=True)
+		self.z_cat = Table.read(redshift_catalog)
 
 		self.wideSOM_res = wideSOM_res
 		self.deepSOM_res = deepSOM_res
@@ -134,8 +134,8 @@ class PZC(object):
 			raise ValueError("Save path must be a directory")
 
 		to_save = {} 
-		ivars = ['sims_pth', 'z_cat_pth', 'save_path', 
-						'wideSOM_res', 'deepSOM_res', 'z_col']
+		ivars = ['sims_pth', 'z_cat_pth', 'save_path', 'pzchat', 'pcchat', 
+						'wideSOM_res', 'deepSOM_res', 'z_col', 'redshifts']
 		for ivar in ivars:
 			to_save[ivar] = getattr(self, ivar, None)
 

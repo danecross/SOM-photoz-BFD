@@ -169,13 +169,15 @@ class SOM(object):
 		if err_fmt is not None: errs = self._get_columns(table, fer_cn)
 		else: errs = np.sqrt(self._get_columns(table, fer_cn))
 
-		def assign_som(SOM, fluxes, errs):
-			cells, _ = SOM.classify(fluxes, errs)
+		def assign_som(classify_func, fluxes, errs):
+			cells, _ = classify_func(fluxes, errs)
+			del fluxes
+			del errs
 			return cells
-    
+   
 		num_inds = min(len(fluxes), num_inds)
 		inds = np.array_split(np.arange(len(fluxes)),num_inds)
-		args = [(self.SOM, fluxes[inds[index]], errs[inds[index]],) for index in range(num_inds)]
+		args = [(self.SOM.classify, fluxes[inds[index]], errs[inds[index]],) for index in range(num_inds)]
 		with mp.Pool() as p: 
 			results = p.starmap(assign_som, tqdm.tqdm(args, total=len(args)))
 
@@ -206,6 +208,7 @@ class SOM(object):
 														col_fmt=flux_colname, 
 														err_fmt=flux_err_colname, 
 														cov_fmt=flux_cov_colname)
+
 		return assignments
 		
 
