@@ -96,7 +96,11 @@ class PZCB(PZC):
 	def __init__(self, pzc, subcatalog):
 
 		self.pzc = pzc
-		self.simulations = subcatalog
+
+		super(PZCB, self).__init__(pzc.sims_pth, pzc.z_cat_pth, 
+											pzc.save_path, 
+											pzc.wideSOM_res, pzc.deepSOM_res, 
+											redshift_colname=pzc.zcol)
 
 	#TODO: generate_realizations will be different for p(z|c,chat)
 	
@@ -109,6 +113,7 @@ class Result(object):
 		self.binned_WCs = binned_WCs
 		self.compost_WCs = compost_WCs
 		self.z = pzc.redshifts
+		self.zres = self.z[1]-self.z[0]
 
 		# for selection effects
 		self.pzc = pzc
@@ -118,16 +123,19 @@ class Result(object):
 		if not apply_bin_cond:
 			Nz = {}
 			if len(self.compost_WCs) > 0:
-				Nz[-1] = np.sum(self.pzchat[self.compost_WCs], axis=0)/len(self.compost_WCs)
+				Nz[-1] = np.sum(self.pzchat[self.compost_WCs], axis=0)
 			for i,tbin in enumerate(self.binned_WCs):
 				Nz[i] = np.sum(self.pzchat[tbin], axis=0)/len(tbin)
 
 		else:
-			pzchats, trash_pzchats = self._apply_bin_cond(weights=None, zmax=6, fill_zeros=fill_zeros)
+			pzchats, trash_pzchats = self._apply_bin_cond(weights=None, zmax=zmax, fill_zeros=fill_zeros)
 			Nz = {}
 			for i,pzchat in enumerate(pzchats):
-				Nz[i] = np.sum(pzchat, axis=0)/np.sum(pzchat)
-			Nz[-1] = np.sum(trash_pzchats, axis=0)/np.sum(pzchat)
+				Nz[i] = np.sum(pzchat, axis=0)/norm
+			Nz[-1] = np.sum(trash_pzchats, axis=0)/norm
+
+		# normalize
+		Nz = {i: Nz[i]/(np.sum(Nz[i])*self.zres) for i in Nz}
 
 		return Nz
 

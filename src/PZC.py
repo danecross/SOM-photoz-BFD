@@ -52,6 +52,8 @@ class PZC(object):
 			- *weights (): Not Implemented Yet. 
 			- *zmax (float): the maximum redshift cutoff to use
 		'''
+
+		# TODO: calculate p(chat) for weights
 		
 		setattr(self, "pcchat", self._get_p_c_chat(weights))
 		setattr(self, "pzc", self._get_p_z_c(zmax, fill_zeros=fill_zeros))
@@ -67,8 +69,8 @@ class PZC(object):
 		ncells_deep, ncells_wide = self.deepSOM_res**2,self.wideSOM_res**2
 		pcchat = np.zeros((ncells_deep,ncells_wide))
 
-		for dc,wc in zip(self.simulations['DC'], self.simulations['WC']):
-			pcchat[int(dc),:] += np.histogram(wc, bins=ncells_wide, range=(-0.5,ncells_wide))[0]
+		#TODO: replace 1 with weighted value of each DF galaxy
+		np.add.at(pcchat, (self.simulations['DC'], self.simulations['WC']), 1) 
 
 		# normalize
 		empty_count = 0
