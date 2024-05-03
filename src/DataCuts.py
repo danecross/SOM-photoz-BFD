@@ -81,3 +81,4 @@ def get_footprint_mask(RA, DEC):
 
 	return in_footprint
 
+
