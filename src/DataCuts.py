@@ -75,7 +75,7 @@ def get_footprint_mask(RA, DEC):
 	'''Determines the position mask for the official DES footprint.'''
 	
 	fname = '/global/cfs/cdirs/des/y6-shear-catalogs/'+\
-			  'y6-combined-hleda-gaiafull-des-stars-hsmap16384-nomdet-v3.fits'
+			  'y6-combined-hleda-gaiafull-des-stars-hsmap131k-mdet-v2.hsp'
 	hmap = healsparse.HealSparseMap.read(fname)
 	in_footprint = hmap.get_values_pos(RA,DEC, valid_mask=True)
 
