@@ -5,7 +5,7 @@ import healsparse
 from astropy.io import fits
 import numpy as np
 
-NOISETIER_FILE = '/global/cfs/cdirs/des/mgatti/BFD_targets_newrun/noisetiers_WF.fits'
+NOISETIER_FILE = '/global/cfs/cdirs/des/mgatti/BFD_targets_newrun/noisetiers.fits'
 
 def get_noisetiers(covariances):
 	'''
