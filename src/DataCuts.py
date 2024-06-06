@@ -5,7 +5,7 @@ import healsparse
 from astropy.io import fits
 import numpy as np
 
-NOISETIER_FILE = '/global/cfs/cdirs/des/mgatti/BFD_targets_newrun/noisetiers.fits'
+NOISETIER_FILE = '/global/cfs/cdirs/des/mgatti/BFD_targets_newrun/noisetiers_WF.fits'
 
 def get_noisetiers(covariances):
 	'''
@@ -28,7 +28,7 @@ def get_noisetiers(covariances):
 	return noisetier_targets
 
 def get_sn_mask(Mf, covariances=None, preassigned_noisetiers=None, 
-					 sn_min=7, sn_max=200, flux_min=1500, flux_max=90000):
+					 sn_min=10, sn_max=200, flux_min=1500, flux_max=90000):
 	'''
 	Determines the mask for noise tier cuts.
 
