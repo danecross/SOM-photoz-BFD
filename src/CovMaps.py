@@ -11,18 +11,23 @@ from DataCuts import get_noisetiers
 
 class CovMaps(object):
 
-	def __init__(self, cat_path, nside, rafmt='RA', decfmt='DEC'):
+	def __init__(self, cat, nside, rafmt='RA', decfmt='DEC'):
 		'''
 		Initializer for CovMaps object. 
 
 		Args:
-			- cat_path (str): path to the catalog from which to make the maps
+			- cat (str): path to the catalog or an astropy.table.Table from which to make the maps
 			- nside (int): healpy nside (~resolution) for the resulting maps
 			- rafmt (str, opt): format of the RA column of the catalog
 			- decfmt (str, opt): format of the DEC column of the catalog
 
 		'''
-		self.cat = Table.read(cat_path)
+
+		if type(cat)==str:
+			self.cat = Table.read(cat)
+		else:
+			self.cat = cat
+
 		self.ra=self.cat[rafmt] ; self.dec=self.cat[decfmt]
 
 		self.nside = nside ; self.npix = hp.nside2npix(nside)
