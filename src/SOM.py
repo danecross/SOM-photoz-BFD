@@ -6,7 +6,7 @@ import multiprocess as mp
 import tqdm
 import os
 
-from NoiseSOM import *
+from NoiseSOMPZ import *
 from SOMRunner import ClassifyRunner
 
 class SOM(object):

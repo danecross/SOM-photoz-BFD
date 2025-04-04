@@ -118,7 +118,7 @@ class Result(object):
 		# for selection effects
 		self.pzc = pzc
 
-	def calculate_Nz(self, apply_bin_cond=True, weights=None, zmax=6, fill_zeros=False):
+	def calculate_Nz(self, apply_bin_cond=True, weights=None, zmax=5, fill_zeros=False):
 
 		if not apply_bin_cond:
 			Nz = {}
@@ -139,7 +139,7 @@ class Result(object):
 
 		return Nz
 
-	def _apply_bin_cond(self, weights=None, zmax=6, fill_zeros=False):
+	def _apply_bin_cond(self, weights=None, zmax=5, fill_zeros=False):
 		
 		compost, grouped_by_bin = self._group_sims_by_tomobin()
 		pzcbs = []

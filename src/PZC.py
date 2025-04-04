@@ -16,7 +16,7 @@ from pipeline_tools import *
 class PZC(object):
 
 	def __init__(self, simulations_path, redshift_catalog, outpath, wideSOM_res, deepSOM_res, 
-						redshift_colname='Z'):
+						redshift_colname='Z', deepcell='DC', widecell='WC'):
 		
 		'''
 		Initializer for PZC class. 
@@ -31,11 +31,16 @@ class PZC(object):
 			- redshift_colname (str, opt): name of the redshift column in the above catalog
 		'''
 
+		self.deepcell = deepcell
+		self.widecell = widecell
+
 		self.sims_pth = simulations_path
 		self.simulations = Table.read(simulations_path)
-		
+		self.simulations.rename_columns([deepcell, widecell], ['DC','WC'])
+
 		self.z_cat_pth = redshift_catalog
 		self.z_cat = Table.read(redshift_catalog)
+		self.z_cat.rename_columns([deepcell], ['DC'])
 
 		self.wideSOM_res = wideSOM_res
 		self.deepSOM_res = deepSOM_res
@@ -44,7 +49,7 @@ class PZC(object):
 		self.zcol = redshift_colname
 
 
-	def make_redshift_map(self, weights=None, zmax=4, fill_zeros=False):
+	def make_redshift_map(self, weights=None, zmax=5, fill_zeros=False):
 		'''
 		Calculates p(z|chat) (after the simulations have been created). 
 
@@ -70,7 +75,9 @@ class PZC(object):
 		pcchat = np.zeros((ncells_deep,ncells_wide))
 
 		#TODO: replace 1 with weighted value of each DF galaxy
-		np.add.at(pcchat, (self.simulations['DC'], self.simulations['WC']), 1) 
+		if weights is None: weights = np.ones(self.simulations['DC'].shape)
+		np.add.at(pcchat, (self.simulations['DC'].data.astype(int), 
+								 self.simulations['WC'].data.astype(int)), weights) 
 
 		# normalize
 		empty_count = 0
@@ -80,10 +87,6 @@ class PZC(object):
 			else:
 				empty_count += 1
 
-		if weights is not None:
-			# apply weights
-			pcchat = pcchat/weights
-   
 		pcchat = np.nan_to_num(pcchat)
 
 		return pcchat
@@ -93,26 +96,21 @@ class PZC(object):
 		ncells_deep, ncells_wide = self.deepSOM_res**2,self.wideSOM_res**2
 		
 		zmax = np.max(self.z_cat[self.zcol]) if zmax is None else zmax
-		zrange = (0,zmax) ; step_size = 0.01 
-
-		redshifts = np.arange(zrange[0], zrange[1]+step_size, step_size) 
+		zmin = 0.01
+		zrange = (zmin,zmax) ; step_size = 0.05 
+		zbins = np.arange(zrange[0], zrange[1]+step_size, step_size) 
+		redshifts = zbins[:-1] + (zbins[1] - zbins[0])/2.
 		setattr(self, 'redshifts', redshifts)
 
-		cz = [np.array([])]*ncells_deep 
-		for row in self.z_cat:
-			cz[int(row['DC'])] = np.append(cz[int(row['DC'])], [row[self.zcol]])
+		self.z_cat = self.z_cat[(self.z_cat['Z']>zmin) & (self.z_cat['Z']<zmax)]
+		zidx = np.digitize(self.z_cat['Z'], redshifts) - 1
+		
+		pzc = np.zeros((len(redshifts), ncells_deep))
+		weights = 1 if 'overlap_weight' not in self.z_cat.colnames \
+						else self.z_cat['overlap_weight']
+		np.add.at(pzc, (zidx, self.z_cat['DC']), weights)
 
-		zero = 0
-		pzc_unnormed = np.zeros((len(redshifts), ncells_deep)) 
-		pzc = np.zeros((len(redshifts), ncells_deep)) 
-
-		for i in range(ncells_deep):
-			if len(cz[i])>0:
-				pzc_unnormed[:,i] = np.histogram(cz[i], len(redshifts), range=zrange)[0]
-				pzc[:,i] = pzc_unnormed[:,i]/np.sum(pzc_unnormed[:,i])
-			elif fill_zeros:
-				zero += 1
-				pzc[:,i] = self.pzc.pzc[:,i]
+		pzc = pzc / np.sum(pzc, axis=0)[None,:]
 
 		pzc = np.nan_to_num(pzc)
 		return pzc
@@ -136,8 +134,9 @@ class PZC(object):
 			raise ValueError("Save path must be a directory")
 
 		to_save = {} 
-		ivars = ['sims_pth', 'z_cat_pth', 'save_path', 'pzchat', 'pcchat', 
-						'wideSOM_res', 'deepSOM_res', 'z_col', 'redshifts']
+		ivars = ['sims_pth', 'z_cat_pth', 'save_path', 'pzchat', 'pcchat', 'pzc',
+						'wideSOM_res', 'deepSOM_res', 'z_col', 'redshifts',
+						'deepcell', 'widecell']
 		for ivar in ivars:
 			to_save[ivar] = getattr(self, ivar, None)
 
@@ -155,7 +154,8 @@ def load_PZC(savepath):
 		sd = pickle.load(f)
 
 	pzc = PZC(sd['sims_pth'], sd['z_cat_pth'], sd['save_path'],
-					sd['wideSOM_res'], sd['deepSOM_res'], sd['z_col'])
+					sd['wideSOM_res'], sd['deepSOM_res'], sd.get('z_col', 'Z'), 
+					sd.get('deepcell', 'DC'), sd.get('widecell', 'WC'))
 
 	for ivar in sd:
 		setattr(pzc, ivar, sd[ivar])
